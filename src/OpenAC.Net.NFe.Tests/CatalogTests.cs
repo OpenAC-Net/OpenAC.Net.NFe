@@ -1,45 +1,47 @@
+using System.IO;
 using OpenAC.Net.NFe.Common;
 using OpenAC.Net.NFe.Common.Types;
 using System.Text;
 using System.Xml.Linq;
 using OpenAC.Net.DFe.Core.Common;
 using OpenAC.Net.NFe.Services;
-using Xunit;
+using System.Threading.Tasks;
 
 namespace OpenAC.Net.NFe.Tests;
 
 public sealed class CatalogTests
 {
-    [Fact]
-    public void ExportaERecarregaCatalogoSemPerderModeloVersaoOuEnderecos()
+    [Test]
+    public async Task ExportaERecarregaCatalogoSemPerderModeloVersaoOuEnderecos()
     {
         using var input = typeof(OpenNFe).Assembly.GetManifestResourceStream("OpenAC.Net.NFe.Resources.services.xml")!;
         var catalog = NFeServiceManager.CarregarCatalogo(input);
-        Assert.Equal(4, catalog.Webservices.Count);
-        Assert.All(catalog.Webservices, group => Assert.Equal("4.00", group.Versao));
+        await Assert.That(catalog.Webservices.Count).IsEqualTo(4);
+        foreach (var group in catalog.Webservices)
+            await Assert.That(group.Versao).IsEqualTo("4.00");
         using var exported = new MemoryStream(Encoding.UTF8.GetBytes(catalog.GetXml()));
         var reloaded = NFeServiceManager.CarregarCatalogo(exported);
-        Assert.Equal(catalog.GetXml(), reloaded.GetXml());
+        await Assert.That(reloaded.GetXml()).IsEqualTo(catalog.GetXml());
         foreach (var model in new[] { ModeloNFe.NFe, ModeloNFe.NFCe })
         foreach (var environment in new[] { DFeTipoAmbiente.Producao, DFeTipoAmbiente.Homologacao })
         foreach (var state in Enum.GetValues<DFeSiglaUF>().Where(uf => uf is not (DFeSiglaUF.AN or DFeSiglaUF.EX or DFeSiglaUF.SU)))
         {
             var config = new NFeConfig(); config.Geral.Modelo = model; config.WebServices.UF = state; config.WebServices.Ambiente = environment;
             foreach (var service in new[] { TipoServicoNFe.NFeAutorizacao, TipoServicoNFe.NFeConsultaProtocolo, TipoServicoNFe.NFeStatusServico, TipoServicoNFe.RecepcaoEvento })
-                Assert.Equal("https", new Uri(NFeServiceManager.ObterEndereco(config, service)).Scheme);
-        }
+                await Assert.That(new Uri(NFeServiceManager.ObterEndereco(config, service)).Scheme).IsEqualTo("https");
+                }
     }
 
-    [Theory]
-    [InlineData("versao")]
-    [InlineData("modelo")]
-    [InlineData("emissao")]
-    [InlineData("ambiente")]
-    [InlineData("uf")]
-    [InlineData("servico")]
-    [InlineData("duplicado")]
-    [InlineData("http")]
-    public void RejeitaCatalogoInvalidoAntesDeUsarEndpoints(string mutation)
+    [Test]
+    [Arguments("versao")]
+    [Arguments("modelo")]
+    [Arguments("emissao")]
+    [Arguments("ambiente")]
+    [Arguments("uf")]
+    [Arguments("servico")]
+    [Arguments("duplicado")]
+    [Arguments("http")]
+    public async Task RejeitaCatalogoInvalidoAntesDeUsarEndpoints(string mutation)
     {
         XNamespace ns = "https://www.openac.net.br/";
         var address = new XElement(ns + "Endereco", new XAttribute("Tipo", "NFeStatusServico"), "https://empresa.test/status");
@@ -58,12 +60,12 @@ public sealed class CatalogTests
             case "http": address.Value = "http://empresa.test/status"; break;
         }
         using var input = new MemoryStream(Encoding.UTF8.GetBytes(root.ToString()));
-        if (mutation is "versao" or "modelo" or "servico" or "duplicado") Assert.Throws<NotSupportedException>(() => NFeServiceManager.CarregarCatalogo(input));
-        else Assert.ThrowsAny<ArgumentException>(() => NFeServiceManager.CarregarCatalogo(input));
+        if (mutation is "versao" or "modelo" or "servico" or "duplicado") await Assert.That(() => NFeServiceManager.CarregarCatalogo(input)).ThrowsExactly<NotSupportedException>();
+        else await Assert.That(() => NFeServiceManager.CarregarCatalogo(input)).Throws<ArgumentException>();
     }
 
-    [Fact]
-    public async Task CatalogoCustomizadoFicaIsoladoNoCliente()
+    [Test]
+    public async Task CatalogoCustomizadoAtualizadoEhUsadoNaProximaOperacao()
     {
         var path = Path.Combine(Path.GetTempPath(), "nfe-services-" + Guid.NewGuid().ToString("N") + ".xml");
         using var cert = Fixtures.Certificate();
@@ -82,24 +84,24 @@ public sealed class CatalogTests
             await File.WriteAllTextAsync(path, xml.Replace("catalogo-a", "catalogo-b"));
             config.Arquivos.ArquivoServicos = "";
             config.Arquivos.ArquivoServicos = path;
-            Assert.Equal(107, (await client.ConsultarSituacaoServicoAsync()).CStat);
-            Assert.Equal("catalogo-a.test", Assert.Single(transport.Requests).Url.Host);
+            await Assert.That((await client.ConsultarSituacaoServicoAsync()).CStat).IsEqualTo(107);
+            await Assert.That((await Assert.That(transport.Requests).HasSingleItem()).Url.Host).IsEqualTo("catalogo-b.test");
         }
         finally { File.Delete(path); }
     }
 
-    [Theory]
-    [InlineData(DFeTipoEmissao.SVCAN, "sefazvirtual.fazenda.gov.br")]
-    [InlineData(DFeTipoEmissao.SVCRS, "nfe-homologacao.svrs.rs.gov.br")]
-    public void ContingenciaNaoAlteraDistribuicaoOuQrCode(DFeTipoEmissao emission, string host)
+    [Test]
+    [Arguments(DFeTipoEmissao.SVCAN, "sefazvirtual.fazenda.gov.br")]
+    [Arguments(DFeTipoEmissao.SVCRS, "nfe-homologacao.svrs.rs.gov.br")]
+    public async Task ContingenciaNaoAlteraDistribuicaoOuQrCode(DFeTipoEmissao emission, string host)
     {
         var config = new NFeConfig(); config.Geral.FormaEmissao = emission;
-        Assert.Contains(host, NFeServiceManager.ObterEndereco(config, TipoServicoNFe.NFeAutorizacao));
-        Assert.Contains("hom1.nfe.fazenda.gov.br", NFeServiceManager.ObterEndereco(config, TipoServicoNFe.NFeDistribuicaoDFe));
+        await Assert.That(NFeServiceManager.ObterEndereco(config, TipoServicoNFe.NFeAutorizacao)).Contains(host);
+        await Assert.That(NFeServiceManager.ObterEndereco(config, TipoServicoNFe.NFeDistribuicaoDFe)).Contains("hom1.nfe.fazenda.gov.br");
         var address = NFeServiceManager.UrlConsulta(config);
         config.Geral.FormaEmissao = DFeTipoEmissao.Normal;
-        Assert.Equal(address, NFeServiceManager.UrlConsulta(config));
+        await Assert.That(NFeServiceManager.UrlConsulta(config)).IsEqualTo(address);
         config.Geral.Modelo = ModeloNFe.NFCe; config.Geral.FormaEmissao = emission;
-        Assert.Throws<NotSupportedException>(() => NFeServiceManager.ObterEndereco(config, TipoServicoNFe.NFeAutorizacao));
+        await Assert.That(() => NFeServiceManager.ObterEndereco(config, TipoServicoNFe.NFeAutorizacao)).ThrowsExactly<NotSupportedException>();
     }
 }

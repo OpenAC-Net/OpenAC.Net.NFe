@@ -1,4 +1,21 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><TargetFramework>net8.0</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><IsPackable>false</IsPackable></PropertyGroup>
-  <ItemGroup><ProjectReference Include="../OpenAC.Net.NFe.DANFe.PDFSharp/OpenAC.Net.NFe.DANFe.PDFSharp.csproj" /><ProjectReference Include="../OpenAC.Net.NFe.DANFe.EscPos/OpenAC.Net.NFe.DANFe.EscPos.csproj" /></ItemGroup>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>WinExe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <ApplicationIcon>Assets/openac.ico</ApplicationIcon>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+  </PropertyGroup>
+  <ItemGroup>
+    <AvaloniaResource Include="Assets/**" />
+    <InternalsVisibleTo Include="OpenAC.Net.NFe.Demo.Tests" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.4" />
+    <ProjectReference Include="../OpenAC.Net.NFe.DANFe.PDFSharp/OpenAC.Net.NFe.DANFe.PDFSharp.csproj" />
+    <ProjectReference Include="../OpenAC.Net.NFe.DANFe.EscPos/OpenAC.Net.NFe.DANFe.EscPos.csproj" />
+  </ItemGroup>
 </Project>

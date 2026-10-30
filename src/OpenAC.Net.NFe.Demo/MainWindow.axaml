@@ -1,0 +1,151 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="using:OpenAC.Net.NFe.Demo"
+        x:Class="OpenAC.Net.NFe.Demo.MainWindow"
+        Icon="avares://OpenAC.Net.NFe.Demo/Assets/openac.ico"
+        Title="OpenAC.Net · NF-e" Width="1360" Height="1000"
+        MinWidth="1080" MinHeight="800" WindowStartupLocation="CenterScreen">
+  <Grid ColumnDefinitions="218,*">
+    <Border Grid.Column="0">
+      <Border.Background>
+        <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
+          <GradientStop Color="#102B51" Offset="0" />
+          <GradientStop Color="#163D70" Offset="1" />
+        </LinearGradientBrush>
+      </Border.Background>
+      <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="18,30,18,22">
+        <StackPanel Margin="14,0,0,34" Spacing="12">
+          <Border Width="48" Height="48" Background="White" CornerRadius="13" Padding="4" HorizontalAlignment="Left" ClipToBounds="True">
+            <Image Source="avares://OpenAC.Net.NFe.Demo/Assets/openac.png" Stretch="Uniform" />
+          </Border>
+          <StackPanel Spacing="4">
+            <TextBlock Text="OpenAC.Net" Foreground="White" FontSize="21" FontWeight="SemiBold" />
+            <TextBlock Text="DOCUMENTOS FISCAIS" Foreground="#8FAFD8" FontSize="10" LetterSpacing="1.3" />
+          </StackPanel>
+        </StackPanel>
+        <ListBox Grid.Row="1" Name="Navigation" Classes="navigation" SelectedIndex="0">
+          <ListBoxItem><StackPanel Orientation="Horizontal" Spacing="12"><Path Width="17" Height="17" Stretch="Uniform" Stroke="#B6CEF0" StrokeThickness="1.6" Data="M2,2 H8 V8 H2 Z M12,2 H18 V8 H12 Z M2,12 H8 V18 H2 Z M12,12 H18 V18 H12 Z" /><TextBlock Text="Operações" /></StackPanel></ListBoxItem>
+          <ListBoxItem><StackPanel Orientation="Horizontal" Spacing="12"><Path Width="17" Height="17" Stretch="Uniform" Stroke="#B6CEF0" StrokeThickness="1.6" Data="M2,5 H18 M2,10 H18 M2,15 H18 M6,2 V8 M14,7 V13 M8,12 V18" /><TextBlock Text="Configurações" /></StackPanel></ListBoxItem>
+          <ListBoxItem><StackPanel Orientation="Horizontal" Spacing="12"><Path Width="17" Height="17" Stretch="Uniform" Stroke="#B6CEF0" StrokeThickness="1.6" Data="M3,2 H17 V7 H3 Z M3,13 H17 V18 H3 Z M10,7 V13 M6,5 H7 M6,16 H7" /><TextBlock Text="Webservices" /></StackPanel></ListBoxItem>
+        </ListBox>
+        <Border Grid.Row="3" Background="#1C4478" CornerRadius="10" Padding="14">
+          <StackPanel Spacing="7">
+            <TextBlock Text="NF-e + NFC-e" Foreground="White" FontWeight="SemiBold" />
+            <TextBlock Text="Emissão, consultas e DANFE em um só lugar." TextWrapping="Wrap" Foreground="#AFC9EB" FontSize="12" LineHeight="20" />
+            <TextBlock Text="DEMONSTRAÇÃO" Foreground="#7EA6DC" FontSize="10" LetterSpacing="1" Margin="0,7,0,0" />
+          </StackPanel>
+        </Border>
+      </Grid>
+    </Border>
+    <Grid Grid.Column="1" RowDefinitions="Auto,*,Auto">
+      <Border Background="White" BorderBrush="#DCE7F7" BorderThickness="0,0,0,1" Padding="28,22">
+        <Grid ColumnDefinitions="*,Auto">
+          <StackPanel Spacing="5">
+            <TextBlock Text="Central de NF-e" FontSize="23" FontWeight="SemiBold" />
+            <TextBlock Name="ContextText" Classes="muted" Text="Nota Fiscal Eletrônica" />
+          </StackPanel>
+          <Border Grid.Column="1" Name="EnvironmentBadge" Background="#EAF2FF" CornerRadius="18" Padding="14,8" VerticalAlignment="Center">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Ellipse Width="7" Height="7" Fill="#3976DA" VerticalAlignment="Center" />
+              <TextBlock Name="EnvironmentText" Text="Homologação" Foreground="#2456A4" FontWeight="Medium" />
+            </StackPanel>
+          </Border>
+        </Grid>
+      </Border>
+      <Grid Grid.Row="1" Name="Workspace" Margin="26,22">
+        <Grid Name="OperationsPage" RowDefinitions="Auto,Auto,*">
+          <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,16">
+            <StackPanel Spacing="5"><TextBlock Text="Operações" Classes="heading" FontSize="19" /><TextBlock Classes="muted" Text="Carregue um documento ou consulte os serviços da SEFAZ." /></StackPanel>
+            <Button Grid.Column="1" Name="ConfigureButton" Content="Configurar conexão" VerticalAlignment="Center" />
+          </Grid>
+          <Grid Grid.Row="1" ColumnDefinitions="*,18,*" Margin="0,0,0,18">
+            <Border Classes="card">
+              <StackPanel Spacing="12">
+                <Grid ColumnDefinitions="*,Auto"><TextBlock Text="Documentos" Classes="heading" /><Border Grid.Column="1" Background="#EDF4FF" CornerRadius="4" Padding="7,3"><TextBlock Name="DocumentCountText" Text="0 XML" FontSize="11" Foreground="#3976DA" /></Border></Grid>
+                <Border Background="#F4F8FF" BorderBrush="#DCE7F7" BorderThickness="1" CornerRadius="8" Padding="12">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel VerticalAlignment="Center" Spacing="4"><TextBlock Name="DocumentNameText" Text="Nenhum XML carregado" TextTrimming="CharacterEllipsis" FontWeight="Medium" /><TextBlock Classes="muted" Text="NF-e, NFC-e ou documento processado" FontSize="11" /></StackPanel>
+                    <Button Grid.Column="1" Name="OpenXmlButton" Content="Abrir XML" Margin="8,0,0,0" />
+                  </Grid>
+                </Border>
+                <Grid ColumnDefinitions="*,10,*"><Button Name="SignButton" Content="Assinar XML" HorizontalAlignment="Stretch" /><Button Grid.Column="2" Name="SaveXmlButton" Content="Salvar XMLs" HorizontalAlignment="Stretch" /></Grid>
+                <Grid ColumnDefinitions="*,10,*"><Button Name="ValidateButton" Content="Validar XML" HorizontalAlignment="Stretch" /><Button Grid.Column="2" Name="SendButton" Classes="primary" Content="Enviar documento" HorizontalAlignment="Stretch" /></Grid>
+                <Grid ColumnDefinitions="*,10,*"><Button Name="PdfButton" Content="Gerar DANFE PDF" HorizontalAlignment="Stretch" /><Button Grid.Column="2" Name="EventPdfButton" Content="PDF evento / inutilização" HorizontalAlignment="Stretch" /></Grid>
+                <Grid ColumnDefinitions="*,10,*"><Button Name="CancelDocumentButton" Content="Cancelar NF-e / NFC-e" HorizontalAlignment="Stretch" /><Button Grid.Column="2" Name="VoidButton" Content="Inutilizar numeração" HorizontalAlignment="Stretch" /></Grid>
+              </StackPanel>
+            </Border>
+            <Border Grid.Column="2" Classes="card">
+              <StackPanel Spacing="12">
+                <TextBlock Text="Consultas" Classes="heading" Margin="0,2,0,3" />
+                <StackPanel><TextBlock Classes="label" Text="CHAVE DE ACESSO" /><TextBox Name="AccessKeyText" PlaceholderText="Digite os 44 dígitos da chave" MaxLength="44" /></StackPanel>
+                <Grid ColumnDefinitions="*,10,*"><Button Name="StatusButton" Content="Status do serviço" HorizontalAlignment="Stretch" /><Button Grid.Column="2" Name="QueryButton" Classes="primary" Content="Consultar NF-e" HorizontalAlignment="Stretch" /></Grid>
+                <Grid ColumnDefinitions="*,10,*"><Button Name="ReceiptButton" Content="Consultar recibo" HorizontalAlignment="Stretch" /><Button Grid.Column="2" Name="RegistrationButton" Content="Cadastro SEFAZ" HorizontalAlignment="Stretch" /></Grid>
+                <Grid ColumnDefinitions="*,10,*"><Button Name="CorrectionButton" Content="Carta de correção" HorizontalAlignment="Stretch" /><Button Grid.Column="2" Name="DistributionButton" Content="Distribuição DF-e" HorizontalAlignment="Stretch" /></Grid>
+                <Grid ColumnDefinitions="*,10,*"><Button Name="PreviewButton" Content="Prévia NFC-e (PNG)" HorizontalAlignment="Stretch" /><Button Grid.Column="2" Name="EscPosButton" Content="Exportar ESC/POS" HorizontalAlignment="Stretch" /></Grid>
+                <TextBlock Classes="muted" Text="As respostas e os arquivos XML aparecem abaixo." FontSize="11" TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+          </Grid>
+          <Border Grid.Row="2" Classes="card" Padding="0" ClipToBounds="True">
+            <Grid RowDefinitions="Auto,*">
+              <Grid ColumnDefinitions="*,Auto,Auto" Margin="18,12,14,8">
+                <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center"><TextBlock Classes="heading" Text="Retorno da operação" FontSize="14" /><TextBlock Name="LastOperationText" Classes="muted" FontSize="11" VerticalAlignment="Center" /></StackPanel>
+                <Button Grid.Column="1" Name="CopyButton" Content="Copiar" MinHeight="28" Padding="10,5" Margin="0,0,8,0" />
+                <Button Grid.Column="2" Name="ClearButton" Content="Limpar" MinHeight="28" Padding="10,5" />
+              </Grid>
+              <TabControl Grid.Row="1" Name="ResponseTabs" Margin="10,0,10,10">
+                <TabItem Header="Resultado"><TextBox Name="ResultText" Classes="code" TextWrapping="Wrap" Text="Bem-vindo ao demo OpenAC.Net.NFe.&#10;&#10;1. Configure seu certificado e a UF em Configurações.&#10;2. Carregue um XML ou consulte o status do serviço.&#10;3. Acompanhe o retorno, os envelopes e os logs nesta área." /></TabItem>
+                <TabItem Header="XML enviado"><TextBox Name="SentXmlText" Classes="code" /></TabItem>
+                <TabItem Header="XML retornado"><TextBox Name="ReceivedXmlText" Classes="code" /></TabItem>
+                <TabItem Header="SOAP"><TextBox Name="SoapText" Classes="code" /></TabItem>
+                <TabItem Header="Prévia NFC-e"><ScrollViewer HorizontalScrollBarVisibility="Auto"><Image Name="ReceiptPreview" Stretch="None" HorizontalAlignment="Center" /></ScrollViewer></TabItem>
+                <TabItem Header="Logs"><TextBox Name="LogText" Classes="code" /></TabItem>
+              </TabControl>
+            </Grid>
+          </Border>
+        </Grid>
+        <ScrollViewer Name="SettingsPage" IsVisible="False">
+          <StackPanel Spacing="18">
+            <StackPanel Spacing="5"><TextBlock Text="Configurações" Classes="heading" FontSize="19" /><TextBlock Classes="muted" Text="Prepare a conexão e os diretórios usados nas operações." /></StackPanel>
+            <Grid ColumnDefinitions="*,18,*">
+              <Border Classes="card"><StackPanel Spacing="14">
+                <TextBlock Text="Certificado digital" Classes="heading" />
+                <StackPanel><TextBlock Classes="label" Text="ARQUIVO PFX / P12" /><Grid ColumnDefinitions="*,Auto"><TextBox Name="CertificatePathText" PlaceholderText="Selecione seu certificado" /><Button Grid.Column="1" Name="BrowseCertificateButton" Content="Procurar" Margin="8,0,0,0" /></Grid></StackPanel>
+                <StackPanel><TextBlock Classes="label" Text="SENHA" /><TextBox Name="CertificatePasswordText" PasswordChar="●" PlaceholderText="Senha do certificado" /></StackPanel>
+                <StackPanel><TextBlock Classes="label" Text="OU NÚMERO DE SÉRIE NO REPOSITÓRIO" /><Grid ColumnDefinitions="*,Auto"><TextBox Name="CertificateSerialText" PlaceholderText="Número de série" /></Grid></StackPanel>
+                <TextBlock Classes="muted" Text="Se um arquivo for informado, ele será usado como certificado. A senha e o CSC permanecem apenas nesta sessão." TextWrapping="Wrap" FontSize="12" />
+              </StackPanel></Border>
+              <Border Grid.Column="2" Classes="card"><StackPanel Spacing="14">
+                <TextBlock Text="Conexão com a SEFAZ" Classes="heading" />
+                <Grid ColumnDefinitions="*,14,*"><StackPanel><TextBlock Classes="label" Text="AMBIENTE" /><ComboBox Name="EnvironmentCombo" /></StackPanel><StackPanel Grid.Column="2"><TextBlock Classes="label" Text="UF" /><ComboBox Name="StateCombo" /></StackPanel></Grid>
+                <Grid ColumnDefinitions="*,14,*"><StackPanel><TextBlock Classes="label" Text="MODELO" /><ComboBox Name="ModelCombo" /></StackPanel><StackPanel Grid.Column="2"><TextBlock Classes="label" Text="EMISSÃO" /><ComboBox Name="EmissionCombo" /></StackPanel></Grid>
+                <Grid ColumnDefinitions="*,14,*"><StackPanel><TextBlock Classes="label" Text="TIMEOUT (SEGUNDOS)" /><NumericUpDown Name="TimeoutInput" Minimum="1" Maximum="600" Value="100" FormatString="0" /></StackPanel><StackPanel Grid.Column="2"><TextBlock Classes="label" Text="NÚMERO DO LOTE" /><TextBox Name="BatchText" Text="1" /></StackPanel></Grid>
+              </StackPanel></Border>
+            </Grid>
+            <Border Classes="card"><StackPanel Spacing="14">
+              <TextBlock Text="Arquivos e impressão" Classes="heading" />
+              <Grid ColumnDefinitions="*,14,*"><StackPanel><TextBlock Classes="label" Text="SCHEMAS XSD" /><Grid ColumnDefinitions="*,Auto"><TextBox Name="SchemasPathText" /><Button Grid.Column="1" Name="BrowseSchemasButton" Content="Procurar" Margin="8,0,0,0" /></Grid></StackPanel><StackPanel Grid.Column="2"><TextBlock Classes="label" Text="DOCUMENTOS XML E SOAP" /><Grid ColumnDefinitions="*,Auto"><TextBox Name="DocumentsPathText" /><Button Grid.Column="1" Name="BrowseDocumentsButton" Content="Procurar" Margin="8,0,0,0" /></Grid></StackPanel></Grid>
+              <Grid ColumnDefinitions="*,14,*"><StackPanel><TextBlock Classes="label" Text="SAÍDA XML / SOAP" /><TextBlock Classes="muted" Text="Os envelopes são salvos no diretório de documentos." TextWrapping="Wrap" /></StackPanel><StackPanel Grid.Column="2"><TextBlock Classes="label" Text="ORIENTAÇÃO DO DANFE" /><ComboBox Name="PdfOrientationCombo" /></StackPanel></Grid>
+              <Grid ColumnDefinitions="*,14,*"><StackPanel><TextBlock Classes="label" Text="LARGURA NFC-e (mm)" /><ComboBox Name="ReceiptWidthCombo" /></StackPanel><StackPanel Grid.Column="2"><TextBlock Classes="label" Text="COLUNAS ESC/POS" /><ComboBox Name="ColumnsCombo" /></StackPanel></Grid>
+              <WrapPanel Orientation="Horizontal"><CheckBox Name="SaveDocumentsCheck" Content="Salvar documentos XML" Margin="0,0,24,0" /><CheckBox Name="SaveSoapCheck" Content="Salvar envelopes SOAP" Margin="0,0,24,0" /><CheckBox Name="OpenPdfCheck" Content="Abrir PDF após gerar" IsChecked="True" /></WrapPanel>
+            </StackPanel></Border>
+            <Border Classes="card"><StackPanel Spacing="12"><TextBlock Text="NFC-e · QR Code" Classes="heading" /><Grid ColumnDefinitions="*,14,*"><StackPanel><TextBlock Classes="label" Text="VERSÃO DO QR CODE" /><ComboBox Name="QrVersionCombo" /></StackPanel><StackPanel Grid.Column="2"><TextBlock Classes="label" Text="IDENTIFICADOR CSC (QR 2.00)" /><TextBox Name="CscIdText" /></StackPanel></Grid><StackPanel><TextBlock Classes="label" Text="CSC (QR 2.00)" /><TextBox Name="CscText" PasswordChar="●" /></StackPanel><CheckBox Name="SynchronousCheck" Content="Autorização síncrona (um documento por envio)" IsChecked="True" /></StackPanel></Border>
+            <Grid ColumnDefinitions="*,Auto"><TextBlock Name="ConfigurationPathText" Classes="muted" FontSize="11" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,16,0" /><Button Grid.Column="1" Name="SaveSettingsButton" Classes="primary" Content="Salvar configurações" /></Grid>
+          </StackPanel>
+        </ScrollViewer>
+        <Grid Name="ServicesPage" RowDefinitions="Auto,Auto,*" IsVisible="False">
+          <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,18"><StackPanel Spacing="5"><TextBlock Text="Webservices" Classes="heading" FontSize="19" /><TextBlock Classes="muted" Text="Endereços efetivos para o modelo, UF, emissão e ambiente selecionados. Comunicação em 4.00." /></StackPanel><Button Grid.Column="1" Name="RefreshServicesButton" Content="Atualizar lista" /></Grid>
+          <WrapPanel Grid.Row="1" Margin="0,0,0,18"><Button Name="LoadServicesButton" Content="Carregar catálogo XML" Margin="0,0,10,6" /><Button Name="SaveServicesButton" Content="Exportar catálogo" Margin="0,0,10,6" /><Button Name="ResetServicesButton" Content="Restaurar catálogo padrão" Margin="0,0,10,6" /></WrapPanel>
+          <Border Grid.Row="2" Classes="card"><ScrollViewer><ItemsControl Name="ServiceList"><ItemsControl.ItemTemplate><DataTemplate x:DataType="local:ServiceEndpoint"><StackPanel Spacing="6" Margin="0,0,0,16"><TextBlock Text="{Binding Name}" Classes="label" /><TextBox Text="{Binding Address}" IsReadOnly="True" PlaceholderText="Serviço não disponível para esta configuração" /></StackPanel></DataTemplate></ItemsControl.ItemTemplate></ItemsControl></ScrollViewer></Border>
+        </Grid>
+      </Grid>
+      <Border Grid.Row="2" Background="White" BorderBrush="#DCE7F7" BorderThickness="0,1,0,0" Padding="26,12">
+        <Grid ColumnDefinitions="Auto,*,Auto">
+          <ProgressBar Name="BusyProgress" Width="68" Height="4" IsIndeterminate="True" IsVisible="False" Margin="0,0,12,0" VerticalAlignment="Center" />
+          <TextBlock Grid.Column="1" Name="StatusText" Classes="muted" Text="Pronto para operar" VerticalAlignment="Center" />
+          <Button Grid.Column="2" Name="CancelOperationButton" Content="Cancelar operação" IsVisible="False" MinHeight="28" Padding="10,4" />
+        </Grid>
+      </Border>
+    </Grid>
+  </Grid>
+</Window>

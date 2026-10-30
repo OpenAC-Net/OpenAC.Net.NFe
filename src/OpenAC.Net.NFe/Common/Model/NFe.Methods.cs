@@ -64,9 +64,7 @@ public sealed partial class NFe
     public bool ValidarAssinatura() => Assinado && this.ValidarAssinatura(true);
 
     internal bool ShouldSerializeInfNFeSupl() => !string.IsNullOrEmpty(InfNFeSupl?.QrCode);
-
-    protected override bool ShouldSerializeSignature() => Signature != null && base.ShouldSerializeSignature();
-
+    
     public void Validar(string pathSchemas) => NFeValidacao.Schema(GetXml(),
         Path.Combine(pathSchemas, "nfe_v" + InfNFe.Versao.GetDFeValue() + ".xsd"));
 

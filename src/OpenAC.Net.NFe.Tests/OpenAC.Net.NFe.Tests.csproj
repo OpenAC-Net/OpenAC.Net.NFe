@@ -1,12 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><TargetFramework>net8.0</TargetFramework><IsPackable>false</IsPackable><IsTestProject>true</IsTestProject><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../OpenAC.Net.NFe.DANFe.PDFSharp/OpenAC.Net.NFe.DANFe.PDFSharp.csproj" />
     <ProjectReference Include="../OpenAC.Net.NFe.DANFe.EscPos/OpenAC.Net.NFe.DANFe.EscPos.csproj" />
     <ProjectReference Include="../OpenAC.Net.NFe.Web/OpenAC.Net.NFe.Web.csproj" />
     <ProjectReference Include="../OpenAC.Net.NFe.DANFe.PDFSharp.Web/OpenAC.Net.NFe.DANFe.PDFSharp.Web.csproj" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
-    <PackageReference Include="xunit" Version="2.9.3" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1" PrivateAssets="all" />
+    <PackageReference Include="TUnit" Version="1.76.45" />
   </ItemGroup>
 </Project>

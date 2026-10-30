@@ -1,7 +1,8 @@
+using TUnit.Assertions.Enums;
 using OpenAC.Net.NFe.Common.Model;
 using System.Xml.Linq;
 using OpenAC.Net.DFe.Core;
-using Xunit;
+using System.Threading.Tasks;
 
 namespace OpenAC.Net.NFe.Tests;
 
@@ -9,12 +10,12 @@ public sealed class TypedDocumentTests
 {
     private static string Schemas => Path.Combine(AppContext.BaseDirectory, "Schemas");
 
-    [Theory]
-    [InlineData(55, "3.10")]
-    [InlineData(65, "3.10")]
-    [InlineData(55, "4.00")]
-    [InlineData(65, "4.00")]
-    public void DocumentoProcessadoSalvaECarregaPeloCoreComAssinaturaEProtocolo(int modelo, string versao)
+    [Test]
+    [Arguments(55, "3.10")]
+    [Arguments(65, "3.10")]
+    [Arguments(55, "4.00")]
+    [Arguments(65, "4.00")]
+    public async Task DocumentoProcessadoSalvaECarregaPeloCoreComAssinaturaEProtocolo(int modelo, string versao)
     {
         using var certificado = Fixtures.Certificate();
         var nota = Fixtures.Nota(modelo, versao);
@@ -26,20 +27,20 @@ public sealed class TypedDocumentTests
         processada.Save(stream);
         var carregada = NFeProc.Load(stream);
         carregada.Validar(Schemas);
-        Assert.True(carregada.ValidarAssinatura());
-        Assert.Equal(nota.Chave, carregada.Chave);
-        Assert.Equal(protocolo.InfProt.NProt, carregada.ProtNFe.InfProt.NProt);
-        Assert.Equal(nota.QrCode, carregada.QrCode);
-        Assert.Same(carregada.NFe.InfNFe, carregada.NFe.InfNFe.Det[0].Prod.Parent);
+        await Assert.That(carregada.ValidarAssinatura()).IsTrue();
+        await Assert.That(carregada.Chave).IsEqualTo(nota.Chave);
+        await Assert.That(carregada.ProtNFe.InfProt.NProt).IsEqualTo(protocolo.InfProt.NProt);
+        await Assert.That(carregada.QrCode).IsEqualTo(nota.QrCode);
+        await Assert.That(carregada.NFe.InfNFe.Det[0].Prod.Parent).IsSameReferenceAs(carregada.NFe.InfNFe);
 
         nota.InfNFe.Ide.NNF = 2;
         protocolo.InfProt.NProt = "OUTRO";
-        Assert.True(processada.ValidarAssinatura());
-        Assert.Equal("135260000000001", processada.ProtNFe.InfProt.NProt);
+        await Assert.That(processada.ValidarAssinatura()).IsTrue();
+        await Assert.That(processada.ProtNFe.InfProt.NProt).IsEqualTo("135260000000001");
     }
 
-    [Fact]
-    public void ProtocoloPreservaAssinaturaSefazEMultiplosParesDeMensagens()
+    [Test]
+    public async Task ProtocoloPreservaAssinaturaSefazEMultiplosParesDeMensagens()
     {
         using var certificado = Fixtures.Certificate();
         var nota = Fixtures.Nota();
@@ -55,13 +56,12 @@ public sealed class TypedDocumentTests
         var processada = nota.ComProtocolo(carregado);
         processada.Validar(Schemas);
         var recarregada = NFeProc.Load(processada.GetXml());
-        Assert.Equal(new[] { "1", "Primeiro aviso", "2", "Segundo aviso" },
-            recarregada.ProtNFe.InfProt.Mensagens.Select(item => item.Valor));
-        Assert.True(XmlSigning.ValidarAssinatura(recarregada.ProtNFe, true));
-        Assert.True(recarregada.ValidarAssinatura());
+        await Assert.That(recarregada.ProtNFe.InfProt.Mensagens.Select(item => item.Valor)).IsEquivalentTo(new[] { "1", "Primeiro aviso", "2", "Segundo aviso" }, CollectionOrdering.Matching);
+        await Assert.That(XmlSigning.ValidarAssinatura(recarregada.ProtNFe, true)).IsTrue();
+        await Assert.That(recarregada.ValidarAssinatura()).IsTrue();
     }
 
-    [Fact]
+    [Test]
     public async Task InutilizacaoGravaDocumentoTipadoValidoEComAssinatura()
     {
         using var certificado = Fixtures.Certificate();
@@ -83,18 +83,18 @@ public sealed class TypedDocumentTests
             Cnpj = "12345678000195", Ano = 26, Serie = 1, NumeroInicial = 1, NumeroFinal = 3,
             Justificativa = "Inutilizacao de numeracao para teste"
         });
-        Assert.Equal(102, resposta.CStat);
-        var documento = Assert.Single(store.Documents);
-        Assert.EndsWith("-procInutNFe.xml", documento.Caminho);
-        Assert.Contains("12345678000195", documento.Caminho);
-        AssertSchema(documento.Conteudo, "procInutNFe_v4.00.xsd");
+        await Assert.That(resposta.CStat).IsEqualTo(102);
+        var documento = await Assert.That(store.Documents).HasSingleItem();
+        await Assert.That(documento.Caminho).EndsWith("-procInutNFe.xml");
+        await Assert.That(documento.Caminho).Contains("12345678000195");
+        await AssertSchema(documento.Conteudo, "procInutNFe_v4.00.xsd");
         var carregada = NFeProcInutilizacao.Load(documento.Conteudo);
-        Assert.Equal("135260000000001", carregada.Retorno.InfInut.Protocolo);
-        Assert.True(XmlSigning.ValidarAssinatura(carregada.Inutilizacao, true));
-        Assert.Same(resposta.Resultado, resposta.Documento.Retorno);
+        await Assert.That(carregada.Retorno.InfInut.Protocolo).IsEqualTo("135260000000001");
+        await Assert.That(XmlSigning.ValidarAssinatura(carregada.Inutilizacao, true)).IsTrue();
+        await Assert.That(resposta.Documento.Retorno).IsSameReferenceAs(resposta.Resultado);
     }
 
-    [Fact]
+    [Test]
     public async Task EventoProcessadoMantemDadosOriginaisESalvaXmlValido()
     {
         using var certificado = Fixtures.Certificate();
@@ -119,21 +119,21 @@ public sealed class TypedDocumentTests
         };
         var cliente = Fixtures.Client(configuracao, transporte);
         var resposta = await cliente.EnviarEventoAsync(new NFeEventoSolicitacao { Eventos = [evento] });
-        var processado = Assert.Single(resposta.Eventos);
-        Assert.True(processado.Evento.ValidarAssinatura());
-        Assert.True(string.IsNullOrEmpty(evento.Signature.SignatureValue));
-        Assert.Null(evento.InfEvento.Id);
-        AssertSchema(resposta.Resultado.GetXml(), "retEnvEvento_v1.00.xsd");
-        var documento = Assert.Single(store.Documents);
-        AssertSchema(documento.Conteudo, "procEventoNFe_v1.00.xsd");
+        var processado = await Assert.That(resposta.Eventos).HasSingleItem();
+        await Assert.That(processado.Evento.ValidarAssinatura()).IsTrue();
+        await Assert.That(string.IsNullOrEmpty(evento.Signature?.SignatureValue)).IsTrue();
+        await Assert.That(evento.InfEvento.Id).IsNull();
+        await AssertSchema(resposta.Resultado.GetXml(), "retEnvEvento_v1.00.xsd");
+        var documento = await Assert.That(store.Documents).HasSingleItem();
+        await AssertSchema(documento.Conteudo, "procEventoNFe_v1.00.xsd");
         var carregado = NFeProcEvento.Load(documento.Conteudo);
-        Assert.Equal(135, carregado.RetEvento.InfEvento.CStat);
-        Assert.True(carregado.Evento.ValidarAssinatura());
+        await Assert.That(carregado.RetEvento.InfEvento.CStat).IsEqualTo(135);
+        await Assert.That(carregado.Evento.ValidarAssinatura()).IsTrue();
         carregado.Evento.Detalhe.Justificativa = "Justificativa alterada depois da assinatura";
-        Assert.False(carregado.Evento.ValidarAssinatura());
+        await Assert.That(carregado.Evento.ValidarAssinatura()).IsFalse();
     }
 
-    [Fact]
+    [Test]
     public async Task ConsultaReciboRecusaDocumentoAlteradoDepoisDeAssinar()
     {
         using var certificado = Fixtures.Certificate();
@@ -147,14 +147,13 @@ public sealed class TypedDocumentTests
                 new XElement(XmlFixture.Ns + "cStat", "104"), protocolo.WriteToXml()).ToString()
         };
         var cliente = Fixtures.Client(Fixtures.Config(certificado), transporte);
-        await Assert.ThrowsAsync<OpenDFeValidationException>(() => cliente.ConsultaReciboAsync(
-            new NFeReciboSolicitacao { Recibo = "351260000000001", Documentos = [nota] }));
+        await Assert.That(() => cliente.ConsultaReciboAsync(
+            new NFeReciboSolicitacao { Recibo = "351260000000001", Documentos = [nota] })).ThrowsExactly<OpenDFeValidationException>();
     }
 
-    private static void AssertSchema(string xml, string schema)
+    private static async Task AssertSchema(string xml, string schema)
     {
-        Assert.True(XmlSchemaValidation.ValidarXml(xml, Path.Combine(Schemas, schema), out var erros, out _),
-            string.Join(Environment.NewLine, erros));
+        await Assert.That(XmlSchemaValidation.ValidarXml(xml, Path.Combine(Schemas, schema), out var erros, out _)).IsTrue();
     }
 
     private sealed class MemoryStore : OpenAC.Net.DFe.Core.Storage.IDFeDocumentStore

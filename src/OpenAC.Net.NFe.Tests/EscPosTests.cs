@@ -1,9 +1,11 @@
+using TUnit.Assertions.Enums;
+using System.IO;
 using System.Text;
 using OpenAC.Net.Devices;
 using OpenAC.Net.EscPos;
 using OpenAC.Net.EscPos.Commom;
 using OpenAC.Net.NFe.DANFe.EscPos;
-using Xunit;
+using System.Threading.Tasks;
 
 namespace OpenAC.Net.NFe.Tests;
 
@@ -11,21 +13,21 @@ public sealed class EscPosTests
 {
     static EscPosTests() => Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
-    [Theory]
-    [InlineData(PaginaCodigo.pc850, 850)]
-    [InlineData(PaginaCodigo.pc1252, 1252)]
-    [InlineData(PaginaCodigo.pcUTF8, 65001)]
-    public void GeracaoUsaCodificacaoDoComponente(PaginaCodigo pagina, int codigo)
+    [Test]
+    [Arguments(PaginaCodigo.pc850, 850)]
+    [Arguments(PaginaCodigo.pc1252, 1252)]
+    [Arguments(PaginaCodigo.pcUTF8, 65001)]
+    public async Task GeracaoUsaCodificacaoDoComponente(PaginaCodigo pagina, int codigo)
     {
         var bytes = new OpenDANFeEscPos().Gerar(Fixtures.Nota(65), paginaCodigo: pagina);
-        Assert.Contains("Eletrônica", Encoding.GetEncoding(codigo).GetString(bytes));
+        await Assert.That(Encoding.GetEncoding(codigo).GetString(bytes)).Contains("Eletrônica");
     }
 
-    [Theory]
-    [InlineData(0)]
-    [InlineData(5)]
-    [InlineData(255)]
-    public void SemCorteRespeitaQuantidadeDeLinhasDeAvanco(int linhas)
+    [Test]
+    [Arguments(0)]
+    [Arguments(5)]
+    [Arguments(255)]
+    public async Task SemCorteRespeitaQuantidadeDeLinhasDeAvanco(int linhas)
     {
         var nota = Fixtures.Nota(65);
         var printer = new OpenDANFeEscPos();
@@ -33,15 +35,15 @@ public sealed class EscPosTests
         printer.Configuracoes.LinhasAvanco = linhas;
         var texto = Encoding.ASCII.GetString(printer.Gerar(nota));
 
-        Assert.Equal(linhas + 1, texto.Reverse().TakeWhile(c => c == '\n').Count());
-        Assert.DoesNotContain("\u001dV\0", texto, StringComparison.Ordinal);
+        await Assert.That(texto.Reverse().TakeWhile(c => c == '\n').Count()).IsEqualTo(linhas + 1);
+        await Assert.That(texto).DoesNotContain("\u001dV\0");
     }
 
-    [Theory]
-    [InlineData(1)]
-    [InlineData(4)]
-    [InlineData(8)]
-    public void QrCodePreservaModuloModeloECorrecao(int modulo)
+    [Test]
+    [Arguments(1)]
+    [Arguments(4)]
+    [Arguments(8)]
+    public async Task QrCodePreservaModuloModeloECorrecao(int modulo)
     {
         using var cert = Fixtures.Certificate();
         var nota = Fixtures.Nota(65);
@@ -51,15 +53,15 @@ public sealed class EscPosTests
         printer.Configuracoes.ModuloQrCode = modulo;
         var bytes = Encoding.UTF8.GetString(printer.Gerar(nota));
 
-        Assert.Contains("\u001d(k\u0004\0\u0031A\u0032\0", bytes, StringComparison.Ordinal);
-        Assert.Contains("\u001d(k\u0003\0\u0031C" + (char)modulo, bytes, StringComparison.Ordinal);
-        Assert.Contains("\u001d(k\u0003\0\u0031E\u0031", bytes, StringComparison.Ordinal);
-        Assert.Contains(nota.QrCode, bytes);
+        await Assert.That(bytes).Contains("\u001d(k\u0004\0\u0031A\u0032\0");
+        await Assert.That(bytes).Contains("\u001d(k\u0003\0\u0031C" + (char)modulo);
+        await Assert.That(bytes).Contains("\u001d(k\u0003\0\u0031E\u0031");
+        await Assert.That(bytes).Contains(nota.QrCode);
     }
 
-    [Theory]
-    [InlineData(ProtocoloEscPos.EscPos, "\u001dV\0")]
-    [InlineData(ProtocoloEscPos.EscBema, "\u001bw")]
+    [Test]
+    [Arguments(ProtocoloEscPos.EscPos, "\u001dV\0")]
+    [Arguments(ProtocoloEscPos.EscBema, "\u001bw")]
     public async Task ImpressaoUsaDispositivoProtocoloECodificacaoDoComponente(ProtocoloEscPos protocolo, string corte)
     {
         var arquivo = Path.GetTempFileName();
@@ -77,25 +79,25 @@ public sealed class EscPosTests
             impressora.Conectar();
             danfe.Imprimir(nota, impressora);
 
-            Assert.True(impressora.Conectado);
-            Assert.Equal(9, impressora.LinhasEntreCupons);
+            await Assert.That(impressora.Conectado).IsTrue();
+            await Assert.That(impressora.LinhasEntreCupons).IsEqualTo(9);
             var bytes = File.ReadAllBytes(arquivo);
             var texto = Encoding.GetEncoding(850).GetString(bytes);
-            Assert.Contains("Eletrônica", texto);
-            Assert.Contains("Dinheiro", texto);
-            Assert.Contains(nota.QrCode, texto, StringComparison.Ordinal);
-            Assert.EndsWith(corte, texto, StringComparison.Ordinal);
+            await Assert.That(texto).Contains("Eletrônica");
+            await Assert.That(texto).Contains("Dinheiro");
+            await Assert.That(texto).Contains(nota.QrCode);
+            await Assert.That(texto).EndsWith(corte);
 
-            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-                danfe.ImprimirAsync(nota, impressora, new CancellationToken(true)));
-            Assert.Equal(bytes, File.ReadAllBytes(arquivo));
+            await Assert.That(() =>
+                danfe.ImprimirAsync(nota, impressora, new CancellationToken(true))).Throws<OperationCanceledException>();
+            await Assert.That(File.ReadAllBytes(arquivo)).IsEquivalentTo(bytes, CollectionOrdering.Matching);
 
             danfe.Configuracoes.CortarPapel = false;
             await danfe.ImprimirAsync(nota, impressora);
-            Assert.True(impressora.Conectado);
+            await Assert.That(impressora.Conectado).IsTrue();
             var segundoCupom = Encoding.GetEncoding(850).GetString(File.ReadAllBytes(arquivo).Skip(bytes.Length).ToArray());
-            Assert.Contains("Dinheiro", segundoCupom);
-            Assert.DoesNotContain(corte, segundoCupom, StringComparison.Ordinal);
+            await Assert.That(segundoCupom).Contains("Dinheiro");
+            await Assert.That(segundoCupom).DoesNotContain(corte);
         }
         finally
         {
@@ -103,10 +105,10 @@ public sealed class EscPosTests
         }
     }
 
-    [Fact]
-    public void ImpressaoExigeComponenteConectado()
+    [Test]
+    public async Task ImpressaoExigeComponenteConectado()
     {
         using var impressora = new EscPosPrinter<FileConfig>(new FileConfig("nao-deve-ser-criado.bin"));
-        Assert.Throws<InvalidOperationException>(() => new OpenDANFeEscPos().Imprimir(Fixtures.Nota(65), impressora));
+        await Assert.That(() => new OpenDANFeEscPos().Imprimir(Fixtures.Nota(65), impressora)).ThrowsExactly<InvalidOperationException>();
     }
 }

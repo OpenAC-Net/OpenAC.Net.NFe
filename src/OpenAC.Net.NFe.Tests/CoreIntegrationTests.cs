@@ -1,3 +1,4 @@
+using System.IO;
 using System.Reflection;
 using NotaFiscal = OpenAC.Net.NFe.Common.Model.NFe;
 using OpenAC.Net.NFe.Common;
@@ -12,7 +13,7 @@ using OpenAC.Net.DFe.Core;
 using OpenAC.Net.DFe.Core.Common;
 using OpenAC.Net.DFe.Core.Http;
 using OpenAC.Net.DFe.Core.Storage;
-using Xunit;
+using System.Threading.Tasks;
 
 namespace OpenAC.Net.NFe.Tests;
 
@@ -20,8 +21,8 @@ public sealed class CoreIntegrationTests
 {
     private const string Status = "<retConsStatServ xmlns='http://www.portalfiscal.inf.br/nfe'><cStat>107</cStat></retConsStatServ>";
 
-    [Fact]
-    public async Task ClienteIsolaConfiguracaoEEndpointsDoChamador()
+    [Test]
+    public async Task ClienteReutilizaConfiguracoesAlteradasAntesDaOperacaoComoNoCTe()
     {
         using var cert = Fixtures.Certificate();
         var transport = new CaptureTransport((_, _) => Task.FromResult(Reply(Status)));
@@ -31,16 +32,67 @@ public sealed class CoreIntegrationTests
         var client = new OpenNFe(config);
         config.WebServices.UF = DFeSiglaUF.MS;
         config.WebServices.Enderecos[TipoServicoNFe.NFeStatusServico] = "https://empresa-b.test/status";
-        config.Geral.VersaoDFe = NFeVersao.v310;
         var response = await client.ConsultarSituacaoServicoAsync();
-        Assert.Equal("empresa-a.test", Assert.Single(transport.Requests).Url.Host);
-        Assert.Equal("", transport.Requests.Single().Url.Query);
-        Assert.Contains("<cUF>35</cUF>", response.XmlEnvio);
-        Assert.Contains("soapenv:Envelope", response.EnvelopeEnvio);
-        Assert.Contains("retConsStatServ", response.EnvelopeRetorno);
+        await Assert.That((await Assert.That(transport.Requests).HasSingleItem()).Url.Host).IsEqualTo("empresa-b.test");
+        await Assert.That(transport.Requests.Single().Url.Query).IsEqualTo("");
+        await Assert.That(response.XmlEnvio).Contains("<cUF>50</cUF>");
+        await Assert.That(response.EnvelopeEnvio).Contains("soapenv:Envelope");
+        await Assert.That(response.EnvelopeRetorno).Contains("retConsStatServ");
+        await Assert.That(ReferenceEquals(config, client.Configuracoes)).IsTrue();
+        client.Configuracoes.Geral.VersaoDFe = NFeVersao.v310;
+        await Assert.That(() => client.ConsultarSituacaoServicoAsync()).ThrowsExactly<NotSupportedException>();
+        await Assert.That(transport.Requests.Count).IsEqualTo(1);
     }
 
-    [Fact]
+    [Test]
+    public async Task OperacaoEmAndamentoUsaCopiaMasProximaChamadaUsaNovasConfiguracoes()
+    {
+        using var certificate = Fixtures.Certificate();
+        var started = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var transport = new CaptureTransport(async (request, token) =>
+        {
+            if (request.Url.Host == "empresa-a.test")
+            {
+                started.TrySetResult(true);
+                await release.Task.WaitAsync(token);
+            }
+            return Reply(Status);
+        });
+        var config = Fixtures.Config(certificate);
+        config.HttpTransport = transport;
+        config.WebServices.Enderecos[TipoServicoNFe.NFeStatusServico] = "https://empresa-a.test/status";
+        var client = new OpenNFe(config);
+        var first = client.ConsultarSituacaoServicoAsync();
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        config.WebServices.UF = DFeSiglaUF.MS;
+        config.WebServices.Enderecos[TipoServicoNFe.NFeStatusServico] = "https://empresa-b.test/status";
+        release.TrySetResult(true);
+        var firstResponse = await first;
+        var secondResponse = await client.ConsultarSituacaoServicoAsync();
+        await Assert.That(firstResponse.XmlEnvio).Contains("<cUF>35</cUF>");
+        await Assert.That(secondResponse.XmlEnvio).Contains("<cUF>50</cUF>");
+        await Assert.That(transport.Requests.Any(request => request.Url.Host == "empresa-a.test")).IsTrue();
+        await Assert.That(transport.Requests.Any(request => request.Url.Host == "empresa-b.test")).IsTrue();
+    }
+
+    [Test]
+    public async Task CertificadoAtualizadoEntreChamadasEhUsadoPelaMesmaInstancia()
+    {
+        using var first = Fixtures.Certificate();
+        using var second = Fixtures.Certificate();
+        var transport = new CaptureTransport((_, _) => Task.FromResult(Reply(Status)));
+        var client = new OpenNFe();
+        client.Configuracoes.HttpTransport = transport;
+        client.Configuracoes.Certificado = first;
+        await client.ConsultarSituacaoServicoAsync();
+        client.Configuracoes.Certificado = second;
+        await client.ConsultarSituacaoServicoAsync();
+        await Assert.That(transport.Requests.Any(request => request.Thumbprint == first.Thumbprint)).IsTrue();
+        await Assert.That(transport.Requests.Any(request => request.Thumbprint == second.Thumbprint)).IsTrue();
+    }
+
+    [Test]
     public async Task AutorizacaoNaoModificaDocumentoOriginalESalvaPeloStoreDoCore()
     {
         using var cert = Fixtures.Certificate();
@@ -54,24 +106,24 @@ public sealed class CoreIntegrationTests
         config.Arquivos.SepararPorCNPJ = true;
         config.Arquivos.SepararPorModelo = true;
         config.WebServices.Salvar = true;
-        config.HttpTransport = new CaptureTransport((request, _) =>
+        config.HttpTransport = new CaptureTransport(async (request, _) =>
         {
             var enviada = NotaFiscal.Load(request.Xml.Descendants(XmlFixture.Ns + "NFe").Single().ToString(SaveOptions.DisableFormatting));
-            Assert.True(enviada.ValidarAssinatura());
-            return Task.FromResult(Reply(new XElement(XmlFixture.Ns + "retEnviNFe", new XElement(XmlFixture.Ns + "cStat", "104"), Fixtures.Protocolo(enviada).WriteToXml()).ToString(SaveOptions.DisableFormatting)));
+            await Assert.That(enviada.ValidarAssinatura()).IsTrue();
+            return Reply(new XElement(XmlFixture.Ns + "retEnviNFe", new XElement(XmlFixture.Ns + "cStat", "104"), Fixtures.Protocolo(enviada).WriteToXml()).ToString(SaveOptions.DisableFormatting));
         });
         var result = await new OpenNFe(config).EnviarAsync(new NFeEnvioSolicitacao { Documentos = [nota] });
-        Assert.Equal(original, nota.GetXml());
-        Assert.False(nota.Assinado);
-        Assert.True(Assert.Single(result.Documentos).Autorizado);
-        Assert.True(result.Documentos[0].ValidarAssinatura());
-        Assert.Equal(3, store.Documents.Count);
-        Assert.Contains(store.Documents, doc => doc.Caminho.EndsWith(nota.Chave + "-procNFe.xml") && doc.Caminho.Contains(Path.Combine("12345678000195", "NFe")));
-        Assert.False(Directory.Exists(config.Arquivos.PathSalvar));
-        Assert.Empty(config.Arquivos.OrdenacaoPath);
+        await Assert.That(nota.GetXml()).IsEqualTo(original);
+        await Assert.That(nota.Assinado).IsFalse();
+        await Assert.That((await Assert.That(result.Documentos).HasSingleItem()).Autorizado).IsTrue();
+        await Assert.That(result.Documentos[0].ValidarAssinatura()).IsTrue();
+        await Assert.That(store.Documents.Count).IsEqualTo(3);
+        await Assert.That(store.Documents).Contains(doc => doc.Caminho.EndsWith(nota.Chave + "-procNFe.xml") && doc.Caminho.Contains(Path.Combine("12345678000195", "NFe")));
+        await Assert.That(Directory.Exists(config.Arquivos.PathSalvar)).IsFalse();
+        await Assert.That(config.Arquivos.OrdenacaoPath).IsEmpty();
     }
 
-    [Fact]
+    [Test]
     public async Task MesmoClienteExecutaChamadasConcorrentesSemEstadoCompartilhado()
     {
         using var cert = Fixtures.Certificate();
@@ -88,13 +140,14 @@ public sealed class CoreIntegrationTests
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var client = new OpenNFe(config);
         var results = await Task.WhenAll(client.ConsultarSituacaoServicoAsync(deadline.Token), client.ConsultarSituacaoServicoAsync(deadline.Token));
-        Assert.All(results, result => Assert.Equal(107, result.CStat));
-        Assert.Equal(2, transport.Requests.Count);
-        Assert.NotSame(transport.Requests.First().Certificate, transport.Requests.Last().Certificate);
-        Assert.True(cert.HasPrivateKey);
+        foreach (var result in results)
+            await Assert.That(result.CStat).IsEqualTo(107);
+        await Assert.That(transport.Requests.Count).IsEqualTo(2);
+        await Assert.That(transport.Requests.Last().Certificate).IsNotSameReferenceAs(transport.Requests.First().Certificate);
+        await Assert.That(cert.HasPrivateKey).IsTrue();
     }
 
-    [Fact]
+    [Test]
     public async Task CancelamentoAntecipadoNaoAbreCertificadoNemTransporte()
     {
         var provider = new CountingCertificates();
@@ -102,12 +155,12 @@ public sealed class CoreIntegrationTests
         var config = new NFeConfig { HttpTransport = transport };
         var client = new OpenNFe(config, provider);
         using var canceled = new CancellationTokenSource(); canceled.Cancel();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.ConsultarSituacaoServicoAsync(canceled.Token));
-        Assert.Equal(0, provider.Count);
-        Assert.Empty(transport.Requests);
+        await Assert.That(() => client.ConsultarSituacaoServicoAsync(canceled.Token)).Throws<OperationCanceledException>();
+        await Assert.That(provider.Count).IsEqualTo(0);
+        await Assert.That(transport.Requests).IsEmpty();
     }
 
-    [Fact]
+    [Test]
     public async Task TimeoutCancelaTransporteERetornaSemRepetirPost()
     {
         using var cert = Fixtures.Certificate();
@@ -116,46 +169,56 @@ public sealed class CoreIntegrationTests
         config.HttpTransport = transport;
         config.WebServices.Tentativas = 5;
         config.WebServices.TimeoutOperacao = TimeSpan.FromMilliseconds(70);
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => new OpenNFe(config).ConsultarSituacaoServicoAsync());
-        Assert.Single(transport.Requests);
+        await Assert.That(() => new OpenNFe(config).ConsultarSituacaoServicoAsync()).Throws<OperationCanceledException>();
+        await Assert.That(transport.Requests).HasSingleItem();
     }
 
-    [Theory]
-    [InlineData(HttpStatusCode.OK)]
-    [InlineData(HttpStatusCode.InternalServerError)]
+    [Test]
+    [Arguments(HttpStatusCode.OK)]
+    [Arguments(HttpStatusCode.InternalServerError)]
     public async Task SoapFaultPassaPeloTratamentoDoCore(HttpStatusCode status)
     {
         using var cert = Fixtures.Certificate();
         var transport = new CaptureTransport((_, _) => Task.FromResult(Reply("<s:Fault xmlns:s='http://www.w3.org/2003/05/soap-envelope'><s:Code><s:Value>s:Receiver</s:Value></s:Code><s:Reason><s:Text>Falha fiscal simulada</s:Text></s:Reason></s:Fault>", status)));
         var config = Fixtures.Config(cert); config.HttpTransport = transport;
-        var error = await Assert.ThrowsAsync<OpenDFeCommunicationException>(() => new OpenNFe(config).ConsultarSituacaoServicoAsync());
-        Assert.Contains("Falha fiscal simulada", error.Message);
-        Assert.Single(transport.Requests);
+        var error = await Assert.That(() => new OpenNFe(config).ConsultarSituacaoServicoAsync()).ThrowsExactly<OpenDFeCommunicationException>();
+        await Assert.That(error.Message).Contains("Falha fiscal simulada");
+        await Assert.That(transport.Requests).HasSingleItem();
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
     public async Task CertificadoConfiguradoEmPfxFuncionaSemInstanciaEmprestada(bool arquivo)
     {
         using var cert = Fixtures.Certificate();
         var pfx = cert.Export(X509ContentType.Pfx, "test");
         var path = Path.Combine(Path.GetTempPath(), "nfe-cert-" + Guid.NewGuid().ToString("N") + ".pfx");
+        var started = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var config = new NFeConfig();
-        config.HttpTransport = new CaptureTransport((_, _) => Task.FromResult(Reply(Status)));
+        config.HttpTransport = new CaptureTransport(async (_, token) =>
+        {
+            started.TrySetResult(true);
+            await release.Task.WaitAsync(token);
+            return Reply(Status);
+        });
         config.Certificados.Senha = "test";
         if (arquivo) { await File.WriteAllBytesAsync(path, pfx); config.Certificados.Certificado = path; }
         else config.Certificados.CertificadoBytes = pfx;
         try
         {
             var client = new OpenNFe(config);
+            var operation = client.ConsultarSituacaoServicoAsync();
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(10));
             if (!arquivo) Array.Clear(pfx);
-            Assert.Equal(107, (await client.ConsultarSituacaoServicoAsync()).CStat);
+            release.TrySetResult(true);
+            await Assert.That((await operation).CStat).IsEqualTo(107);
         }
-        finally { if (File.Exists(path)) File.Delete(path); }
+        finally { release.TrySetResult(true); if (File.Exists(path)) File.Delete(path); }
     }
 
-    [Fact]
+    [Test]
     public async Task ReciboAssociaSomenteDocumentosExplicitos()
     {
         using var cert = Fixtures.Certificate();
@@ -166,12 +229,12 @@ public sealed class CoreIntegrationTests
         var result = await client.ConsultaReciboAsync(new NFeReciboSolicitacao { Recibo = "351260000000001", Documentos =
             [nota]
         });
-        Assert.True(Assert.Single(result.Documentos).Autorizado);
-        Assert.True(nota.ValidarAssinatura());
-        Assert.Empty((await client.ConsultaReciboAsync(new NFeReciboSolicitacao { Recibo = "351260000000001" })).Documentos);
+        await Assert.That((await Assert.That(result.Documentos).HasSingleItem()).Autorizado).IsTrue();
+        await Assert.That(nota.ValidarAssinatura()).IsTrue();
+        await Assert.That((await client.ConsultaReciboAsync(new NFeReciboSolicitacao { Recibo = "351260000000001" })).Documentos).IsEmpty();
     }
 
-    [Fact]
+    [Test]
     public async Task LoteAssincronoRetornaCopiasAssinadasParaAssociacaoDoRecibo()
     {
         using var certificate = Fixtures.Certificate();
@@ -184,40 +247,44 @@ public sealed class CoreIntegrationTests
         var phase = 0;
         NotaFiscal[] sent = [];
         var config = Fixtures.Config(certificate);
-        config.HttpTransport = new CaptureTransport((request, _) =>
+        config.HttpTransport = new CaptureTransport(async (request, _) =>
         {
             if (Interlocked.Increment(ref phase) == 1)
             {
-                Assert.Equal("0", request.Xml.Descendants(XmlFixture.Ns + "indSinc").Single().Value);
+                await Assert.That(request.Xml.Descendants(XmlFixture.Ns + "indSinc").Single().Value).IsEqualTo("0");
                 sent =
                 [
                     .. request.Xml.Descendants(XmlFixture.Ns + "NFe").Select(xml =>
                         NotaFiscal.Load(xml.ToString(SaveOptions.DisableFormatting)))
                 ];
-                return Task.FromResult(Reply("<retEnviNFe xmlns='http://www.portalfiscal.inf.br/nfe'><cStat>103</cStat><infRec><nRec>351260000000001</nRec></infRec></retEnviNFe>"));
+                return Reply("<retEnviNFe xmlns='http://www.portalfiscal.inf.br/nfe'><cStat>103</cStat><infRec><nRec>351260000000001</nRec></infRec></retEnviNFe>");
             }
-            return Task.FromResult(Reply(new XElement(XmlFixture.Ns + "retConsReciNFe", new XElement(XmlFixture.Ns + "cStat", "104"), sent.Select(note => Fixtures.Protocolo(note).WriteToXml())).ToString(SaveOptions.DisableFormatting)));
+            return Reply(new XElement(XmlFixture.Ns + "retConsReciNFe", new XElement(XmlFixture.Ns + "cStat", "104"), sent.Select(note => Fixtures.Protocolo(note).WriteToXml())).ToString(SaveOptions.DisableFormatting));
         });
         var client = new OpenNFe(config);
         var envio = await client.EnviarAsync(new NFeEnvioSolicitacao { Lote = "42", Sincrono = false, Documentos =
             [original, other]
         });
-        Assert.Empty(envio.Documentos);
-        Assert.Equal(2, envio.DocumentosEnviados.Count);
-        Assert.All(envio.DocumentosEnviados, note => Assert.True(note.ValidarAssinatura()));
-        Assert.False(original.Assinado); Assert.False(other.Assinado);
+        await Assert.That(envio.Documentos).IsEmpty();
+        await Assert.That(envio.DocumentosEnviados.Count).IsEqualTo(2);
+        await Assert.That(envio.DocumentosEnviados).All(note => note.ValidarAssinatura());
+        await Assert.That(original.Assinado).IsFalse(); await Assert.That(other.Assinado).IsFalse();
         var retorno = await client.ConsultaReciboAsync(new NFeReciboSolicitacao { Recibo = envio.Recibo, Documentos = envio.DocumentosEnviados });
-        Assert.Equal(2, retorno.Documentos.Count);
-        Assert.All(retorno.Documentos, note => { Assert.True(note.Autorizado); Assert.True(note.ValidarAssinatura()); });
+        await Assert.That(retorno.Documentos.Count).IsEqualTo(2);
+        foreach (var note in retorno.Documentos)
+        {
+            await Assert.That(note.Autorizado).IsTrue();
+            await Assert.That(note.ValidarAssinatura()).IsTrue();
+        }
     }
 
-    [Fact]
-    public void ModeloTipadoPreservaQrCodeComoTexto()
+    [Test]
+    public async Task ModeloTipadoPreservaQrCodeComoTexto()
     {
         var note = NotaFiscal.Load(Fixtures.Nota(65).GetXml());
         note.InfNFeSupl = new NFeSupl { QrCode = "https://consulta.test/qrcode?p=chave|3|2", UrlChave = "https://consulta.test" };
         var reloaded = NotaFiscal.Load(note.GetXml());
-        Assert.Equal(note.InfNFeSupl.QrCode, reloaded.InfNFeSupl.QrCode);
+        await Assert.That(reloaded.InfNFeSupl.QrCode).IsEqualTo(note.InfNFeSupl.QrCode);
     }
 
     internal static HttpResponseMessage Reply(string payload, HttpStatusCode status = HttpStatusCode.OK) => new(status)
@@ -237,15 +304,18 @@ public sealed class CoreIntegrationTests
         { cancellationToken.ThrowIfCancellationRequested(); Documents.Add(new DFeDocument(document.Caminho, document.Conteudo, document.ArquivoExiste)); return Task.CompletedTask; }
     }
 
-    internal sealed record Request(Uri Url, XElement Xml, X509Certificate2 Certificate);
+    internal sealed record Request(Uri Url, XElement Xml, X509Certificate2 Certificate)
+    {
+        internal string Thumbprint { get; } = Certificate.Thumbprint;
+    }
     internal sealed class CaptureTransport(Func<Request, CancellationToken, Task<HttpResponseMessage>> send) : IDFeHttpTransport
     {
         internal ConcurrentBag<Request> Requests = [];
         public async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, DFeHttpTransportOptions options, CancellationToken cancellationToken = default)
         {
-            Assert.False(options.AllowAutoRedirect);
-            Assert.False(options.UseCookies);
-            Assert.Equal(DecompressionMethods.None, options.AutomaticDecompression);
+            await Assert.That(options.AllowAutoRedirect).IsFalse();
+            await Assert.That(options.UseCookies).IsFalse();
+            await Assert.That(options.AutomaticDecompression).IsEqualTo(DecompressionMethods.None);
             var captured = new Request(request.RequestUri!, XmlFixture.Parse(await request.Content!.ReadAsStringAsync(cancellationToken)), options.Certificate!);
             Requests.Add(captured);
             return await send(captured, cancellationToken);
@@ -254,14 +324,14 @@ public sealed class CoreIntegrationTests
 }
 
 /// <summary>Confere os contratos do assembly contra os XSDs compilados, sem depender de um gerador.</summary>
-public sealed class SchemaCoverageTests(Xunit.Abstractions.ITestOutputHelper output)
+public sealed class SchemaCoverageTests
 {
     private sealed record Binding(System.Reflection.PropertyInfo Property, Type Type, int Order);
 
-    [Theory]
-    [InlineData("3.10")]
-    [InlineData("4.00")]
-    public void TodosOsCamposDosDoisLeiautesPossuemContratoESaoSerializados(string version)
+    [Test]
+    [Arguments("3.10")]
+    [Arguments("4.00")]
+    public async Task TodosOsCamposDosDoisLeiautesPossuemContratoESaoSerializados(string version)
     {
         var schemas = new System.Xml.Schema.XmlSchemaSet { XmlResolver = new System.Xml.XmlUrlResolver() };
         schemas.Add(null, Path.Combine(AppContext.BaseDirectory, "Schemas", "nfe_v" + version + ".xsd"));
@@ -453,7 +523,7 @@ public sealed class SchemaCoverageTests(Xunit.Abstractions.ITestOutputHelper out
         };
         var json = System.Text.Json.JsonSerializer.Serialize(report, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
         File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "schema-coverage-" + version + ".json"), json);
-        output.WriteLine(json);
-        Assert.True(errors.Count == 0, string.Join(Environment.NewLine, report.errors));
+        Console.WriteLine(json);
+        await Assert.That(errors).IsEmpty();
     }
 }

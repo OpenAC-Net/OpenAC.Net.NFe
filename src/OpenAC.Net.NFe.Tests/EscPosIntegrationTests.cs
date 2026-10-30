@@ -1,3 +1,5 @@
+using TUnit.Assertions.Enums;
+using System.IO;
 using System.Text;
 using OpenAC.Net.Devices;
 using OpenAC.Net.EscPos;
@@ -5,16 +7,16 @@ using OpenAC.Net.EscPos.Commom;
 using OpenAC.Net.NFe.Common.Model;
 using OpenAC.Net.NFe.DANFe.EscPos;
 using OpenAC.Net.NFe.DANFe.EscPos.Configuracao;
-using Xunit;
+using System.Threading.Tasks;
 
 namespace OpenAC.Net.NFe.Tests;
 
 public sealed class EscPosIntegrationTests
 {
-    [Theory]
-    [InlineData(ProtocoloEscPos.EscPos, PaginaCodigo.pc850)]
-    [InlineData(ProtocoloEscPos.EscBema, PaginaCodigo.pc1252)]
-    public void ExportacaoEmMemoriaProduzOsMesmosBytesDoDispositivo(ProtocoloEscPos protocolo, PaginaCodigo pagina)
+    [Test]
+    [Arguments(ProtocoloEscPos.EscPos, PaginaCodigo.pc850)]
+    [Arguments(ProtocoloEscPos.EscBema, PaginaCodigo.pc1252)]
+    public async Task ExportacaoEmMemoriaProduzOsMesmosBytesDoDispositivo(ProtocoloEscPos protocolo, PaginaCodigo pagina)
     {
         using var certificado = Fixtures.Certificate();
         var nota = Fixtures.Nota(65);
@@ -33,23 +35,23 @@ public sealed class EscPosIntegrationTests
             {
                 impressora.Conectar();
                 danfe.Imprimir(documento, impressora);
-                Assert.True(impressora.Conectado);
-                Assert.Equal(9, impressora.LinhasEntreCupons);
-                Assert.Equal(32, impressora.Colunas);
-                Assert.Equal(pagina, impressora.PaginaCodigo);
-                Assert.Equal(protocolo, impressora.Protocolo);
+                await Assert.That(impressora.Conectado).IsTrue();
+                await Assert.That(impressora.LinhasEntreCupons).IsEqualTo(9);
+                await Assert.That(impressora.Colunas).IsEqualTo(32);
+                await Assert.That(impressora.PaginaCodigo).IsEqualTo(pagina);
+                await Assert.That(impressora.Protocolo).IsEqualTo(protocolo);
             }
-            Assert.Equal(esperado, File.ReadAllBytes(arquivo));
-            Assert.Equal(original, documento.GetXml());
-            Assert.True(documento.ValidarAssinatura());
+            await Assert.That(File.ReadAllBytes(arquivo)).IsEquivalentTo(esperado, CollectionOrdering.Matching);
+            await Assert.That(documento.GetXml()).IsEqualTo(original);
+            await Assert.That(documento.ValidarAssinatura()).IsTrue();
         }
         finally { File.Delete(arquivo); }
     }
 
-    [Theory]
-    [InlineData(32)]
-    [InlineData(48)]
-    public void PreviaUsaRenderizadorDoComponenteSemAbrirDispositivo(int colunas)
+    [Test]
+    [Arguments(32)]
+    [Arguments(48)]
+    public async Task PreviaUsaRenderizadorDoComponenteSemAbrirDispositivo(int colunas)
     {
         using var certificado = Fixtures.Certificate();
         var nota = Fixtures.Nota(65);
@@ -58,17 +60,17 @@ public sealed class EscPosIntegrationTests
         var danfe = new OpenDANFeEscPos(new DANFeEscPosConfig
         { Colunas = colunas, MensagemRodape = "OBRIGADO PELA PREFERENCIA" });
         var bytes = danfe.GerarPreview(nota.ComProtocolo(Fixtures.Protocolo(nota)));
-        Assert.Equal(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }, bytes.Take(8));
-        Assert.True(bytes.Length > 1000);
+        await Assert.That(bytes.Take(8)).IsEquivalentTo(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }, CollectionOrdering.Matching);
+        await Assert.That(bytes.Length > 1000).IsTrue();
         var diretorio = Path.Combine(AppContext.BaseDirectory, "Artifacts");
         Directory.CreateDirectory(diretorio);
         File.WriteAllBytes(Path.Combine(diretorio, $"nfce-escpos-{colunas}.png"), bytes);
     }
 
-    [Theory]
-    [InlineData(32)]
-    [InlineData(48)]
-    public void LayoutPreservaTodosOsProdutosEOrdenaQrCodeAntesDasInformacoesAdicionais(int colunas)
+    [Test]
+    [Arguments(32)]
+    [Arguments(48)]
+    public async Task LayoutPreservaTodosOsProdutosEOrdenaQrCodeAntesDasInformacoesAdicionais(int colunas)
     {
         using var certificado = Fixtures.Certificate();
         var nota = Fixtures.Nota(65, itens: 12);
@@ -77,60 +79,61 @@ public sealed class EscPosIntegrationTests
         nota.GerarQrCode(Fixtures.Config(certificado, 65));
         var danfe = new OpenDANFeEscPos(new DANFeEscPosConfig { Colunas = colunas });
         var texto = danfe.GerarTexto(nota);
-        Assert.All(texto.Split('\n'), linha => Assert.InRange(linha.Length, 0, colunas));
-        for (var numero = 1; numero <= 12; numero++) Assert.Contains(numero.ToString("D4"), texto);
-        Assert.True(texto.IndexOf("Qtd. total de itens", StringComparison.Ordinal) > texto.IndexOf("0012", StringComparison.Ordinal));
+        foreach (var linha in texto.Split('\n'))
+            await Assert.That(linha.Length).IsBetween(0, colunas).Inclusive();
+        for (var numero = 1; numero <= 12; numero++) await Assert.That(texto).Contains(numero.ToString("D4"));
+        await Assert.That(texto.IndexOf("Qtd. total de itens", StringComparison.Ordinal) > texto.IndexOf("0012", StringComparison.Ordinal)).IsTrue();
         var bytes = Encoding.GetEncoding(850).GetString(danfe.Gerar(nota));
-        Assert.True(bytes.IndexOf(nota.QrCode, StringComparison.Ordinal) < bytes.IndexOf("OBSERVACAO-DO-CONTRIBUINTE", StringComparison.Ordinal));
-        Assert.Contains("Dinheiro", texto);
-        Assert.Contains("120,00", texto);
+        await Assert.That(bytes.IndexOf(nota.QrCode, StringComparison.Ordinal) < bytes.IndexOf("OBSERVACAO-DO-CONTRIBUINTE", StringComparison.Ordinal)).IsTrue();
+        await Assert.That(texto).Contains("Dinheiro");
+        await Assert.That(texto).Contains("120,00");
     }
 
-    [Fact]
-    public void DadosFiscaisNaoPodemInjetarComandosDeControle()
+    [Test]
+    public async Task DadosFiscaisNaoPodemInjetarComandosDeControle()
     {
         var nota = Fixtures.Nota(65);
         nota.InfNFe.Emit.XNome = "LOJA\u001b@INJETADO";
         nota.InfNFe.Det[0].Prod.XProd = "PRODUTO\u001dV\0INJETADO";
         var danfe = new OpenDANFeEscPos();
         var texto = danfe.GerarTexto(nota);
-        Assert.DoesNotContain('\u001b', texto);
-        Assert.DoesNotContain('\u001d', texto);
-        Assert.DoesNotContain('\0', texto);
+        await Assert.That(texto).DoesNotContain('\u001b');
+        await Assert.That(texto).DoesNotContain('\u001d');
+        await Assert.That(texto).DoesNotContain('\0');
         var bytes = Encoding.GetEncoding(850).GetString(danfe.Gerar(nota));
-        Assert.Contains("LOJA @INJETADO", bytes);
-        Assert.Contains("PRODUTO V INJETADO", bytes);
+        await Assert.That(bytes).Contains("LOJA @INJETADO");
+        await Assert.That(bytes).Contains("PRODUTO V INJETADO");
     }
 
-    [Fact]
-    public void PreparacaoUsaColunasDoComponenteERecusaModeloInvalidoSemAlterarBuffer()
+    [Test]
+    public async Task PreparacaoUsaColunasDoComponenteERecusaModeloInvalidoSemAlterarBuffer()
     {
         var arquivo = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".bin");
         using var impressora = new EscPosPrinter<FileConfig>(new FileConfig(arquivo)) { Colunas = 32 };
         var danfe = new OpenDANFeEscPos();
         danfe.PrepararCupom(Fixtures.Nota(65), impressora);
-        Assert.False(impressora.Conectado);
-        Assert.False(File.Exists(arquivo));
+        await Assert.That(impressora.Conectado).IsFalse();
+        await Assert.That(File.Exists(arquivo)).IsFalse();
         var antes = impressora.GerarPreview();
-        Assert.Throws<ArgumentException>(() => danfe.PrepararCupom(Fixtures.Nota(55), impressora));
-        Assert.Equal(antes, impressora.GerarPreview());
+        await Assert.That(() => danfe.PrepararCupom(Fixtures.Nota(55), impressora)).ThrowsExactly<ArgumentException>();
+        await Assert.That(impressora.GerarPreview()).IsEquivalentTo(antes, CollectionOrdering.Matching);
     }
 
-    [Fact]
-    public void ResumoERodapeSaoAplicadosSemAlterarConfiguracaoOriginal()
+    [Test]
+    public async Task ResumoERodapeSaoAplicadosSemAlterarConfiguracaoOriginal()
     {
         var configuracao = new DANFeEscPosConfig { ExibirItens = false, MensagemRodape = "RODAPE-ORIGINAL", Colunas = 32 };
         var danfe = new OpenDANFeEscPos(configuracao);
         configuracao.ExibirItens = true;
         configuracao.MensagemRodape = "RODAPE-ALTERADO";
         var texto = danfe.GerarTexto(Fixtures.Nota(65));
-        Assert.DoesNotContain("CÓDIGO / DESCRIÇÃO", texto);
-        Assert.Contains("Qtd. total de itens", texto);
-        Assert.Contains("RODAPE-ORIGINAL", texto);
-        Assert.DoesNotContain("RODAPE-ALTERADO", texto);
+        await Assert.That(texto).DoesNotContain("CÓDIGO / DESCRIÇÃO");
+        await Assert.That(texto).Contains("Qtd. total de itens");
+        await Assert.That(texto).Contains("RODAPE-ORIGINAL");
+        await Assert.That(texto).DoesNotContain("RODAPE-ALTERADO");
     }
 
-    [Fact]
+    [Test]
     public async Task ChamadasCompartilhamFilaDaImpressoraEPermitemCancelarAEspera()
     {
         var arquivo = Path.GetTempFileName();
@@ -145,18 +148,18 @@ public sealed class EscPosIntegrationTests
             var proximo = new OpenDANFeEscPos();
             using var cancelamento = new CancellationTokenSource();
             var cancelada = proximo.ImprimirAsync(Fixtures.Nota(65), impressora, cancelamento.Token);
-            Assert.False(cancelada.IsCompleted);
+            await Assert.That(cancelada.IsCompleted).IsFalse();
             cancelamento.Cancel();
-            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cancelada);
+            await Assert.That(() => cancelada).Throws<OperationCanceledException>();
             proximo.Configuracoes.MensagemRodape = "CONFIGURACAO-ANTES-DA-FILA";
             var aguardando = proximo.ImprimirAsync(Fixtures.Nota(65), impressora);
             proximo.Configuracoes.MensagemRodape = "CONFIGURACAO-DEPOIS-DA-FILA";
             primeiro.Liberar.TrySetResult();
             await Task.WhenAll(tarefaInicial, aguardando).WaitAsync(TimeSpan.FromSeconds(5));
             var bytes = Encoding.GetEncoding(850).GetString(File.ReadAllBytes(arquivo));
-            Assert.Contains("CONFIGURACAO-ANTES-DA-FILA", bytes);
-            Assert.DoesNotContain("CONFIGURACAO-DEPOIS-DA-FILA", bytes);
-            Assert.True(impressora.Conectado);
+            await Assert.That(bytes).Contains("CONFIGURACAO-ANTES-DA-FILA");
+            await Assert.That(bytes).DoesNotContain("CONFIGURACAO-DEPOIS-DA-FILA");
+            await Assert.That(impressora.Conectado).IsTrue();
         }
         finally
         {

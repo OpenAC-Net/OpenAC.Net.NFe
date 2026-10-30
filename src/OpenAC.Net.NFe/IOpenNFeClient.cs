@@ -1,12 +1,15 @@
 using System.Threading;
 using System.Threading.Tasks;
 using OpenAC.Net.NFe.Common.Model;
+using OpenAC.Net.NFe.Common;
 
 namespace OpenAC.Net.NFe;
 
-/// <summary>Operações independentes com dados e cancelamento explícitos por chamada.</summary>
+/// <summary>Contrato assíncrono com configurações alteráveis entre operações, como no CT-e.</summary>
 public interface IOpenNFeClient
 {
+    NFeConfig Configuracoes { get; }
+
     Task<NFeAutorizacaoResposta> EnviarAsync(NFeEnvioSolicitacao solicitacao, CancellationToken cancellationToken = default);
     Task<NFeConsultaResposta> ConsultarAsync(string chave, CancellationToken cancellationToken = default);
     Task<NFeStatusServicoResposta> ConsultarSituacaoServicoAsync(CancellationToken cancellationToken = default);

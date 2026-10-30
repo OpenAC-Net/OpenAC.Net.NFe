@@ -125,7 +125,7 @@ IOpenNFeClient nfe = new OpenNFe(config);
 
 Também são aceitos PFX em `Certificados.CertificadoBytes`, certificado instalado ou uma instância em `NFeConfig.Certificado`. Para especializar a obtenção, implemente `INFeCertificadoProvider`.
 
-`OpenNFe` captura uma cópia da configuração na criação e copia os documentos por operação. Para usar outra configuração, crie outro cliente. A instância fornecida em `Certificado` pertence à aplicação; cada operação usa e descarta sua própria cópia.
+`OpenNFe.Configuracoes` pode ser alterada entre operações, como no CT-e. Cada chamada captura uma cópia das configurações vigentes e copia os documentos recebidos. O cliente pode ser reutilizado após mudanças de UF, ambiente, certificado ou endpoints. A instância fornecida em `Certificado` pertence à aplicação; cada operação usa e descarta sua própria cópia.
 
 ### 2. Montando uma NF-e
 
@@ -524,26 +524,42 @@ Para PDF, use `AddDANFePdfSharp` e injete `IOpenDANFeWeb`. `IDANFeConfigurationP
 - **Transporte personalizado:** configure `NFeConfig.HttpTransport` com uma implementação de `IDFeHttpTransport`.
 - **Endereços de serviço:** use `WebServices.Enderecos[TipoServicoNFe]` ou um catálogo XML em `Arquivos.ArquivoServicos`.
 
+Assim como no CT-e, `OpenNFe.Configuracoes` permanece acessível e alterável entre operações, e `new OpenNFe()` usa as configurações padrão. Cada operação captura uma cópia das configurações vigentes ao iniciar; alterações posteriores valem para a próxima chamada. Use uma instância por fluxo e configure-a antes de iniciar a operação. Os documentos continuam sendo informados explicitamente nas solicitações.
+
 O catálogo de serviços fica em `Resources/services.xml`. A aplicação controla retomadas e consultas; os POSTs fiscais não são repetidos automaticamente. Providers, transportes e stores compartilhados devem aceitar concorrência.
 
 ---
 
 ## 🧪 Compilar e Testar
 
-Para desenvolver a solução, utilize o **SDK .NET 10** e o **runtime .NET 8** para os testes e a demonstração:
+Para desenvolver a solução, utilize o **SDK .NET 10**. Os testes usam **TUnit** e **.NET 10**. O demo desktop usa **Avalonia 12** e **.NET 10**.
 
 ```bash
-dotnet build src/OpenAC.Net.NFe.slnx
-dotnet test src/OpenAC.Net.NFe.Tests/OpenAC.Net.NFe.Tests.csproj
+cd src
+dotnet build OpenAC.Net.NFe.slnx
+dotnet test --project OpenAC.Net.NFe.Tests/OpenAC.Net.NFe.Tests.csproj
+dotnet test --project OpenAC.Net.NFe.Demo.Tests/OpenAC.Net.NFe.Demo.Tests.csproj
 ```
 
-A biblioteca referencia `OpenAC.Net.DFe.Core` **1.8.0-beta.5**. Para desenvolver com um projeto local do Core, informe explicitamente `-p:DFeCoreProject=/caminho/OpenAC.Net.DFe.Core.csproj`.
+O `src/global.json` seleciona o runner **Microsoft.Testing.Platform**. Execute os comandos de teste a partir de `src`. Para gerar relatório TRX, acrescente `--report-trx` ao comando. A configuração segue a [documentação do TUnit](https://tunit.dev/docs/getting-started/running-your-tests/).
+
+A biblioteca referencia `OpenAC.Net.DFe.Core` **1.8.0-beta.6**. Para desenvolver com um projeto local do Core, informe explicitamente `-p:DFeCoreProject=/caminho/OpenAC.Net.DFe.Core.csproj`.
 
 `SchemaCoverageTests` percorre os XSDs compilados 3.10/4.00 e os contratos do assembly, conferindo campos, alternativas, enums, coleções, ordem e filtros por versão. Os testes também verificam documentos assinados, protocolos, serviços simulados e impressão. Essa validação utiliza schemas locais e não substitui a homologação junto à SEFAZ.
 
 As bibliotecas .NET Framework podem ser compiladas no Linux com os reference assemblies; sua execução deve ser validada no Windows. Para atualizar schemas, revise os modelos afetados e execute a auditoria e a suíte de testes.
 
-O projeto `OpenAC.Net.NFe.Demo` permite gerar saídas locais a partir de um XML fornecido pela aplicação:
+O [demo Avalonia](src/OpenAC.Net.NFe.Demo/README.md) segue a organização do demo CT-e, com tema azul, operações, configurações e catálogo de webservices. Permite carregar XMLs NF-e/NFC-e, assinar, validar, enviar, consultar, enviar cancelamento e CC-e, inutilizar numeração, gerar DANFE PDF e visualizar ou exportar cupons NFC-e.
+
+Na raiz do repositório, execute sem argumentos para abrir a interface:
+
+```bash
+dotnet run --project src/OpenAC.Net.NFe.Demo
+```
+
+![Demo Avalonia NF-e](src/OpenAC.Net.NFe.Demo/Docs/preview.png)
+
+Os comandos de impressão local continuam disponíveis sem abrir a interface:
 
 ```bash
 dotnet run --project src/OpenAC.Net.NFe.Demo -- danfe nota-autorizada.xml danfe.pdf

@@ -6,7 +6,7 @@ using OpenAC.Net.NFe.Services;
 
 namespace OpenAC.Net.NFe.Common;
 
-/// <summary>Opções capturadas na criação do cliente. Transporte e armazenamento injetados devem aceitar concorrência.</summary>
+/// <summary>Opções alteráveis entre operações; cada operação captura uma cópia ao iniciar. Transporte e armazenamento injetados devem aceitar concorrência.</summary>
 public sealed class NFeConfig : DFeConfigBase<NFeConfigGeral, NFeConfigWebServices, NFeConfigCertificados, NFeConfigArquivos>
 {
     public NFeConfig()
