@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFrameworks>net462;net48;netstandard2.0;net8.0;net9.0;net10.0</TargetFrameworks><SignAssembly>true</SignAssembly><AssemblyOriginatorKeyFile>../OpenAC.Net.NFe/OpenAC.snk</AssemblyOriginatorKeyFile></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../OpenAC.Net.NFe/OpenAC.Net.NFe.csproj" /><None Include="README.md" Pack="true" PackagePath="/" /></ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="OpenAC.Net.EscPos" Version="1.7.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../Shared/Printing/NFeImpressao.cs" Link="Common/NFeImpressao.cs" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,9 @@
+<Solution>
+  <Project Path="OpenAC.Net.NFe/OpenAC.Net.NFe.csproj" />
+  <Project Path="OpenAC.Net.NFe.DANFe.PDFSharp/OpenAC.Net.NFe.DANFe.PDFSharp.csproj" />
+  <Project Path="OpenAC.Net.NFe.DANFe.EscPos/OpenAC.Net.NFe.DANFe.EscPos.csproj" />
+  <Project Path="OpenAC.Net.NFe.Web/OpenAC.Net.NFe.Web.csproj" />
+  <Project Path="OpenAC.Net.NFe.DANFe.PDFSharp.Web/OpenAC.Net.NFe.DANFe.PDFSharp.Web.csproj" />
+  <Project Path="OpenAC.Net.NFe.Demo/OpenAC.Net.NFe.Demo.csproj" />
+  <Project Path="OpenAC.Net.NFe.Tests/OpenAC.Net.NFe.Tests.csproj" />
+</Solution>
