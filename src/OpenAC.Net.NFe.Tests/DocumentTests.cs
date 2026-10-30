@@ -48,7 +48,7 @@ public sealed class DocumentTests
     [Fact]public void AlteracaoNoModeloInvalidaAssinatura()
     {
         using var cert=Fixtures.Certificate();var nota=Fixtures.Nota();nota.Assinar(cert);var before=nota.GetXml();
-        nota.InfNFe.Ide.NNF="123";
+        nota.InfNFe.Ide.NNF=123;
         Assert.NotEqual(before,nota.GetXml());Assert.False(nota.ValidarAssinatura());
         var adulterada=before.Replace("VENDA DE MERCADORIA","OPERACAO ALTERADA");Assert.False(NotaFiscal.Load(adulterada).ValidarAssinatura());
     }

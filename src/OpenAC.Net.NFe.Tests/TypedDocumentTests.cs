@@ -32,7 +32,7 @@ public sealed class TypedDocumentTests
         Assert.Equal(nota.QrCode, carregada.QrCode);
         Assert.Same(carregada.NFe.InfNFe, carregada.NFe.InfNFe.Det[0].Prod.Parent);
 
-        nota.InfNFe.Ide.NNF = "2";
+        nota.InfNFe.Ide.NNF = 2;
         protocolo.InfProt.NProt = "OUTRO";
         Assert.True(processada.ValidarAssinatura());
         Assert.Equal("135260000000001", processada.ProtNFe.InfProt.NProt);

@@ -17,7 +17,7 @@ public sealed partial class NFe
     public string Chave => InfNFe?.Id?.StartsWith("NFe", StringComparison.Ordinal) == true ? InfNFe.Id.Substring(3) : "";
 
     [DFeIgnore]
-    public ModeloNFe Modelo => int.TryParse((string)InfNFe?.Ide?.Mod, NumberStyles.None, CultureInfo.InvariantCulture, out var modelo) ? (ModeloNFe)modelo : 0;
+    public ModeloNFe Modelo => InfNFe?.Ide?.Mod ?? 0;
 
     [DFeIgnore]
     public bool Assinado => !string.IsNullOrEmpty(Signature?.SignatureValue);
@@ -30,7 +30,7 @@ public sealed partial class NFe
         if (Assinado) throw new InvalidOperationException("A chave de um documento assinado não pode ser alterada.");
         var chave = CalcularChave();
         InfNFe.Id = "NFe" + chave;
-        InfNFe.Ide.CDV = chave.Substring(43);
+        InfNFe.Ide.CDV = chave[43] - '0';
     }
 
     private string CalcularChave()
@@ -38,16 +38,16 @@ public sealed partial class NFe
         var ide = InfNFe?.Ide ?? throw new OpenDFeValidationException("ide não informado.");
         var emit = InfNFe.Emit ?? throw new OpenDFeValidationException("Emitente não informado.");
         var documento = string.IsNullOrEmpty(emit.CNPJ) ? (emit.CPF ?? "").PadLeft(14, '0') : emit.CNPJ;
-        return NFeChave.Gerar(int.Parse((string)ide.CUF, CultureInfo.InvariantCulture),
-            DateTimeOffset.Parse((string)ide.DhEmi, CultureInfo.InvariantCulture), documento, (int)Modelo,
-            int.Parse((string)ide.Serie, CultureInfo.InvariantCulture), long.Parse((string)ide.NNF, CultureInfo.InvariantCulture),
-            ide.TpEmis, int.Parse((string)ide.CNF, CultureInfo.InvariantCulture));
+        return NFeChave.Gerar((int)ide.CUF,
+            ide.DhEmi, documento, (int)Modelo,
+            ide.Serie, ide.NNF,
+            ide.TpEmis.GetDFeValue(), int.Parse((string)ide.CNF, CultureInfo.InvariantCulture));
     }
 
     public void ValidarIdentificacao()
     {
         NFeValidacao.Chave(Chave);
-        if (Chave != CalcularChave() || InfNFe.Ide.CDV != Chave.Substring(43))
+        if (Chave != CalcularChave() || InfNFe.Ide.CDV != Chave[43] - '0')
             throw new OpenDFeValidationException("A chave de acesso/cDV difere dos campos da NF-e.");
     }
 
@@ -61,12 +61,14 @@ public sealed partial class NFe
     }
 
     /// <summary>Confere a assinatura dos dados atuais; alterações no modelo invalidam a assinatura.</summary>
-    public bool ValidarAssinatura() => Assinado && XmlSigning.ValidarAssinatura<NFe>(this, true);
+    public bool ValidarAssinatura() => Assinado && this.ValidarAssinatura(true);
+
+    internal bool ShouldSerializeInfNFeSupl() => !string.IsNullOrEmpty(InfNFeSupl?.QrCode);
 
     protected override bool ShouldSerializeSignature() => Signature != null && base.ShouldSerializeSignature();
 
     public void Validar(string pathSchemas) => NFeValidacao.Schema(GetXml(),
-        Path.Combine(pathSchemas, "nfe_v" + EnumExtensions.GetDFeValue<NFeVersao>(InfNFe.Versao) + ".xsd"));
+        Path.Combine(pathSchemas, "nfe_v" + InfNFe.Versao.GetDFeValue() + ".xsd"));
 
     public void GerarQrCode(NFeConfig configuracao)
     {

@@ -44,7 +44,7 @@ public sealed class UnifiedModelTests
                 new XElement(XmlFixture.Ns + "CNPJ", "12345678000195"), new XElement(XmlFixture.Ns + "tBand", "01"), new XElement(XmlFixture.Ns + "cAut", "123456"))));
         var typed = NotaFiscal.Load(xml.ToString());
         Assert.Equal(2, typed.InfNFe.Pag.Count);
-        Assert.Equal("03", typed.InfNFe.Pag[1].TPag);
+        Assert.Equal(FormaPagamento.fpCartaoCredito, typed.InfNFe.Pag[1].TPag);
         Assert.Equal(5m, typed.InfNFe.Pag[1].VPag);
         Assert.Equal("123456", typed.InfNFe.Pag[1].Card.CAut);
         Assert.Same(typed.InfNFe, typed.InfNFe.Pag[1].Card.Parent);
@@ -63,10 +63,10 @@ public sealed class UnifiedModelTests
         var payment = Assert.Single(typed.InfNFe.Pag);
         payment.DetPag[0].VPag = 5m;
         var second = payment.DetPag.AddNew();
-        second.TPag = "03"; second.VPag = 5m;
-        second.Card = new NFePagCard { TpIntegra = "2", CNPJ = "12345678000195", TBand = "01", CAut = "123456", CNPJReceb = "12345678000195" };
-        payment.TPag = "99"; payment.VPag = 999m;
-        typed.InfNFe.Ide.IndPag = "0";
+        second.TPag = FormaPagamento.fpCartaoCredito; second.VPag = 5m;
+        second.Card = new NFePagCard { TpIntegra = (TipoIntegracaoPagamento)2, CNPJ = "12345678000195", TBand = BandeiraCartao.bcVisa, CAut = "123456", CNPJReceb = "12345678000195" };
+        payment.TPag = FormaPagamento.fpOutro; payment.VPag = 999m;
+        typed.InfNFe.Ide.IndPag = IndPagamento.AVista;
         Assert.Same(typed.InfNFe, second.Parent);
         Assert.Same(typed.InfNFe, second.Card.Parent);
         var xml = XmlFixture.Parse(typed.GetXml());
@@ -85,8 +85,8 @@ public sealed class UnifiedModelTests
         using var certificate = Fixtures.Certificate();
         var typed = NotaFiscal.Load(Fixtures.Nota(55, version).GetXml());
         var medicines = typed.InfNFe.Det[0].Prod.Med;
-        medicines.Add(new NFeDetProdMed { NLote = "LOTE1", QLote = 1m, DFab = "2026-01-01", DVal = "2027-01-01", CProdANVISA = "ISENTO", VPMC = 10m });
-        if (version == "3.10") medicines.Add(new NFeDetProdMed { NLote = "LOTE2", QLote = 2m, DFab = "2026-01-02", DVal = "2027-01-02", VPMC = 20m });
+        medicines.Add(new NFeDetProdMed { NLote = "LOTE1", QLote = 1m, DFab = new DateTime(2026, 1, 1), DVal = new DateTime(2027, 1, 1), CProdANVISA = "ISENTO", VPMC = 10m });
+        if (version == "3.10") medicines.Add(new NFeDetProdMed { NLote = "LOTE2", QLote = 2m, DFab = new DateTime(2026, 1, 2), DVal = new DateTime(2027, 1, 2), VPMC = 20m });
         var generated = typed.GetXml();
         var reloaded = NotaFiscal.Load(generated);
         Assert.Equal(medicines.Count, reloaded.InfNFe.Det[0].Prod.Med.Count);
@@ -112,7 +112,7 @@ public sealed class UnifiedModelTests
     public void AlterarVersaoDaRaizAtualizaCondicoesDosFilhos()
     {
         var typed = NotaFiscal.Load(Fixtures.Nota(55, "3.10").GetXml());
-        typed.InfNFe.Det[0].Imposto.IPI = new NFeDetImpostoIPI { ClEnq = "999", CEnq = "999" };
+        typed.InfNFe.Det[0].Imposto.IPI = new NFeDetImpostoIPI { ClEnq = "999", CEnq = 999 };
         typed.InfNFe.Det[0].Imposto.IBSCBS = new NFeDetImpostoIBSCBS { CST = "000", CClassTrib = "000001" };
         var before = XmlFixture.Parse(typed.GetXml());
         Assert.Single(before.Descendants(XmlFixture.Ns + "indPag"));
@@ -140,4 +140,38 @@ public sealed class UnifiedModelTests
         typed.InfNFe = NotaFiscal.Load(Fixtures.Nota().GetXml()).InfNFe;
         Assert.Same(typed.InfNFe, typed.InfNFeSupl.Parent);
     }
+
+    [Theory]
+    [InlineData("3.10")]
+    [InlineData("4.00")]
+    public void IPIComISSQNPreservaCamposEOrdemExigidaPeloSchema(string version)
+    {
+        using var certificate = Fixtures.Certificate();
+        var nota = Fixtures.Nota(55, version);
+        var imposto = nota.InfNFe.Det[0].Imposto;
+        imposto.Imposto = new NFeDetImpostoISSQN
+        {
+            VBC = 10m, VAliq = 5m, VISSQN = 0.50m, CMunFG = 3550308,
+            CListServ = "01.01", IndISS = IndicadorISS.iiExigivel, IndIncentivo = indIncentivo.iiNao
+        };
+        imposto.IPI = new NFeDetImpostoIPI
+        {
+            CEnq = 999, TipoIPI = new NFeDetImpostoIPIIPINT { CST = CSTIPI.ipi53 }
+        };
+        imposto.II = new NFeDetImpostoII();
+        var xml = XmlFixture.Parse(nota.GetXml());
+        var tags = xml.Descendants(XmlFixture.Ns + "imposto").Single().Elements().Select(e => e.Name.LocalName).ToArray();
+        Assert.Contains("IPI", tags);
+        Assert.Contains("ISSQN", tags);
+        Assert.DoesNotContain("ICMS", tags);
+        Assert.DoesNotContain("II", tags);
+        Assert.True(Array.IndexOf(tags, "IPI") < Array.IndexOf(tags, "ISSQN"));
+        var reloaded = NotaFiscal.Load(xml.ToString());
+        Assert.NotNull(reloaded.InfNFe.Det[0].Imposto.IPI.IPINT);
+        Assert.IsType<NFeDetImpostoISSQN>(reloaded.InfNFe.Det[0].Imposto.Imposto);
+        reloaded.Assinar(certificate);
+        reloaded.Validar(Fixtures.Config(certificate).Arquivos.PathSchemas);
+        Assert.True(reloaded.ValidarAssinatura());
+    }
+
 }

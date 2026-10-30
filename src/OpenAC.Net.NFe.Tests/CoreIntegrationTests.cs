@@ -1,3 +1,4 @@
+using System.Reflection;
 using NotaFiscal = OpenAC.Net.NFe.Common.Model.NFe;
 using OpenAC.Net.NFe.Common;
 using OpenAC.Net.NFe.Common.Types;
@@ -249,5 +250,210 @@ public sealed class CoreIntegrationTests
             Requests.Add(captured);
             return await send(captured, cancellationToken);
         }
+    }
+}
+
+/// <summary>Confere os contratos do assembly contra os XSDs compilados, sem depender de um gerador.</summary>
+public sealed class SchemaCoverageTests(Xunit.Abstractions.ITestOutputHelper output)
+{
+    private sealed record Binding(System.Reflection.PropertyInfo Property, Type Type, int Order);
+
+    [Theory]
+    [InlineData("3.10")]
+    [InlineData("4.00")]
+    public void TodosOsCamposDosDoisLeiautesPossuemContratoESaoSerializados(string version)
+    {
+        var schemas = new System.Xml.Schema.XmlSchemaSet { XmlResolver = new System.Xml.XmlUrlResolver() };
+        schemas.Add(null, Path.Combine(AppContext.BaseDirectory, "Schemas", "nfe_v" + version + ".xsd"));
+        schemas.Compile();
+        var root = (System.Xml.Schema.XmlSchemaElement)schemas.GlobalElements[
+            new System.Xml.XmlQualifiedName("NFe", "http://www.portalfiscal.inf.br/nfe")]!;
+        var elements = new HashSet<string>();
+        var attributes = new HashSet<string>();
+        var groups = new HashSet<string>();
+        var enumValues = new HashSet<string>();
+        var orders = new HashSet<string>();
+        var errors = new HashSet<string>();
+        var serializationChecks = new HashSet<string>();
+        var schemaVersion = version == "3.10" ? NFeVersao.v310 : NFeVersao.v400;
+
+        IEnumerable<string> Codes(System.Xml.Schema.XmlSchemaSimpleType type, HashSet<System.Xml.Schema.XmlSchemaType> visited)
+        {
+            if (!visited.Add(type)) yield break;
+            if (type.Content is System.Xml.Schema.XmlSchemaSimpleTypeRestriction restriction)
+                foreach (var facet in restriction.Facets.OfType<System.Xml.Schema.XmlSchemaEnumerationFacet>())
+                    yield return facet.Value!;
+            if (type.Content is System.Xml.Schema.XmlSchemaSimpleTypeUnion union && union.BaseMemberTypes != null)
+                foreach (var member in union.BaseMemberTypes)
+                    foreach (var code in Codes(member, visited)) yield return code;
+            if (type.BaseXmlSchemaType is System.Xml.Schema.XmlSchemaSimpleType parent)
+                foreach (var code in Codes(parent, visited)) yield return code;
+        }
+
+        void CheckEnum(System.Xml.Schema.XmlSchemaSimpleType type, Type modelType, string path)
+        {
+            modelType = Nullable.GetUnderlyingType(modelType) ?? modelType;
+            if (!modelType.IsEnum) return;
+            var available = modelType.GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+                .Select(member => member.GetCustomAttribute<OpenAC.Net.DFe.Core.Attributes.DFeEnumAttribute>()?.Value ?? member.Name).ToHashSet();
+            foreach (var code in Codes(type, new()))
+            {
+                enumValues.Add(path + "=" + code);
+                if (!available.Contains(code)) errors.Add(path + ": código " + code + " ausente em " + modelType.Name);
+            }
+        }
+
+        Dictionary<string, Binding> Bindings(Type type, bool attribute)
+        {
+            var result = new Dictionary<string, Binding>();
+            foreach (var property in type.GetProperties())
+            {
+                if (property.GetCustomAttribute<OpenAC.Net.DFe.Core.Attributes.DFeIgnoreAttribute>() != null) continue;
+                if (attribute)
+                {
+                    var map = property.GetCustomAttribute<OpenAC.Net.DFe.Core.Attributes.DFeAttributeAttribute>();
+                    if (map != null) result.Add(map.Name, new(property, property.PropertyType, map.Ordem));
+                    continue;
+                }
+                var element = property.GetCustomAttribute<OpenAC.Net.DFe.Core.Attributes.DFeElementAttribute>();
+                var collection = property.GetCustomAttribute<OpenAC.Net.DFe.Core.Attributes.DFeCollectionAttribute>();
+                if (element != null) result.Add(element.Name, new(property, property.PropertyType, element.Ordem));
+                if (collection != null) result.Add(collection.Name, new(property, property.PropertyType.GetGenericArguments()[0], collection.Ordem));
+                foreach (var item in property.GetCustomAttributes<OpenAC.Net.DFe.Core.Attributes.DFeItemAttribute>())
+                    result.Add(item.Name, new(property, item.Tipo, 0));
+            }
+            return result;
+        }
+
+        IEnumerable<System.Xml.Schema.XmlSchemaElement> Children(System.Xml.Schema.XmlSchemaParticle particle)
+        {
+            if (particle is System.Xml.Schema.XmlSchemaElement element)
+            {
+                // A assinatura XMLDSig é implementada pelo Core e exercitada nos testes de assinatura.
+                if (element.QualifiedName.Namespace != "http://www.w3.org/2000/09/xmldsig#") yield return element;
+            }
+            else if (particle is System.Xml.Schema.XmlSchemaGroupBase group)
+                foreach (var child in group.Items.OfType<System.Xml.Schema.XmlSchemaParticle>())
+                    foreach (var descendant in Children(child)) yield return descendant;
+            else if (particle is System.Xml.Schema.XmlSchemaGroupRef reference && reference.Particle != null)
+                foreach (var descendant in Children(reference.Particle)) yield return descendant;
+        }
+
+        void CheckOrder(System.Xml.Schema.XmlSchemaParticle particle, Dictionary<string, Binding> bindings, string path)
+        {
+            if (particle is System.Xml.Schema.XmlSchemaGroupRef reference && reference.Particle != null)
+            {
+                CheckOrder(reference.Particle, bindings, path);
+                return;
+            }
+            if (particle is not System.Xml.Schema.XmlSchemaGroupBase group) return;
+            var children = group.Items.OfType<System.Xml.Schema.XmlSchemaParticle>().ToArray();
+            foreach (var child in children) CheckOrder(child, bindings, path);
+            if (particle is not System.Xml.Schema.XmlSchemaSequence) return;
+            for (var first = 0; first < children.Length; first++)
+                for (var second = first + 1; second < children.Length; second++)
+                    foreach (var left in Children(children[first]))
+                        foreach (var right in Children(children[second]))
+                        {
+                            if (left.Name == right.Name || !bindings.TryGetValue(left.Name!, out var a) || !bindings.TryGetValue(right.Name!, out var b)) continue;
+                            var pair = path + "/" + left.Name + " < " + right.Name;
+                            orders.Add(pair);
+                            if (a.Order >= b.Order) errors.Add(pair + $": ordem incompatível ({a.Order}, {b.Order})");
+                        }
+        }
+
+        XElement Serialize(Type owner, string name, string value, bool attribute)
+        {
+            var instance = Activator.CreateInstance(owner)!;
+            var input = new XElement("probe", attribute ? (object)new XAttribute(name, value) : new XElement(name, value));
+            owner.GetMethod("ReadXml")!.Invoke(instance, new object[] { input, null! });
+            if (instance is NFeInfNFe info) info.Versao = schemaVersion;
+            else owner.GetProperty("Parent")?.SetValue(instance, new NFeInfNFe
+            {
+                Versao = schemaVersion,
+                Ide = new NFeIde { Mod = ModeloNFe.NFe, TpEmis = TipoEmissao.OffLine }
+            });
+            if (instance is NFeIde ide)
+            {
+                ide.Mod = ModeloNFe.NFe;
+                ide.TpEmis = TipoEmissao.OffLine;
+            }
+            return (XElement)owner.GetMethod("WriteToXml")!.Invoke(instance, new object[] { "probe", "", null! })!;
+        }
+
+        void CheckSerialization(Type owner, Binding binding, System.Xml.Schema.XmlSchemaSimpleType type, string name, string path, bool attribute)
+        {
+            if (!serializationChecks.Add(path)) return;
+            var target = Nullable.GetUnderlyingType(binding.Type) ?? binding.Type;
+            var sample = Codes(type, new()).FirstOrDefault() ?? (target == typeof(DateTime) ? "2026-10-28" :
+                target == typeof(DateTimeOffset) ? "2026-10-28T10:00:00-04:00" : target == typeof(string) ? "VALUE" : "1");
+            if (target.IsEnum && !Codes(type, new()).Any())
+                sample = target.GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+                    .Select(member => member.GetCustomAttribute<OpenAC.Net.DFe.Core.Attributes.DFeEnumAttribute>()?.Value ?? member.Name).First();
+            if (name == "versao" && owner == typeof(NFeInfNFe)) sample = version;
+            var xml = Serialize(owner, name, sample, attribute);
+            if (attribute ? xml.Attribute(name) == null : xml.Element(name) == null)
+                errors.Add(path + ": campo permitido pelo XSD foi descartado na serialização");
+        }
+
+        void Walk(System.Xml.Schema.XmlSchemaElement element, Type modelType, string path)
+        {
+            elements.Add(path);
+            if (element.ElementSchemaType is System.Xml.Schema.XmlSchemaSimpleType simple)
+            {
+                CheckEnum(simple, modelType, path);
+                return;
+            }
+            if (element.ElementSchemaType is not System.Xml.Schema.XmlSchemaComplexType complex) return;
+            groups.Add(path);
+            var bindings = Bindings(modelType, false);
+            var attrBindings = Bindings(modelType, true);
+            foreach (System.Xml.Schema.XmlSchemaAttribute attribute in complex.AttributeUses.Values)
+            {
+                var attrPath = path + "/@" + attribute.Name;
+                attributes.Add(attrPath);
+                if (!attrBindings.TryGetValue(attribute.Name!, out var binding)) errors.Add(attrPath + ": atributo ausente em " + modelType.Name);
+                else
+                {
+                    CheckEnum(attribute.AttributeSchemaType!, binding.Type, attrPath);
+                    CheckSerialization(modelType, binding, attribute.AttributeSchemaType!, attribute.Name!, attrPath, true);
+                }
+            }
+            CheckOrder(complex.ContentTypeParticle, bindings, path);
+            var children = Children(complex.ContentTypeParticle).ToArray();
+            foreach (var child in children)
+            {
+                var childPath = path + "/" + child.Name;
+                if (!bindings.TryGetValue(child.Name!, out var binding)) errors.Add(childPath + ": elemento ausente em " + modelType.Name);
+                else
+                {
+                    var isCollection = binding.Property.PropertyType != typeof(string) && typeof(System.Collections.IEnumerable).IsAssignableFrom(binding.Property.PropertyType);
+                    if (child.MaxOccurs > 1 && !isCollection) errors.Add(childPath + ": repetição não representada por coleção");
+                    Walk(child, binding.Type, childPath);
+                    if (child.ElementSchemaType is System.Xml.Schema.XmlSchemaSimpleType simpleType)
+                        CheckSerialization(modelType, binding, simpleType, child.Name!, childPath, false);
+                }
+            }
+            foreach (var field in bindings.Keys.Except(children.Select(child => child.Name)))
+            {
+                if (modelType == typeof(NotaFiscal) && field == "Signature") continue;
+                var check = path + "/" + field + " (proibido em " + version + ")";
+                if (!serializationChecks.Add(check)) continue;
+                if (Serialize(modelType, field, "", false).Element(field) != null)
+                    errors.Add(check + ": campo exclusivo de outro leiaute foi serializado");
+            }
+        }
+
+        Walk(root, typeof(NotaFiscal), "NFe");
+        var report = new
+        {
+            version, elements = elements.Count, attributes = attributes.Count, groups = groups.Count,
+            enumValues = enumValues.Count, orderConstraints = orders.Count, serializationChecks = serializationChecks.Count,
+            errors = errors.OrderBy(error => error).ToArray()
+        };
+        var json = System.Text.Json.JsonSerializer.Serialize(report, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "schema-coverage-" + version + ".json"), json);
+        output.WriteLine(json);
+        Assert.True(errors.Count == 0, string.Join(Environment.NewLine, report.errors));
     }
 }

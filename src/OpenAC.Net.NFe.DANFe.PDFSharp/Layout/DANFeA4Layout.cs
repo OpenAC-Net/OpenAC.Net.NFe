@@ -32,7 +32,7 @@ internal static class DANFeA4Layout
                 }
                 cabecalho.Identificacao(emitente.XNome, NFeImpressao.Endereco(emitente.EnderEmit),
                     "CNPJ/CPF: " + NFeImpressao.Documento(emitente.CNPJ ?? emitente.CPF),
-                    ide.NNF, ide.Serie, NFeImpressao.Texto(ide.TpNF), nota.Chave, configuracao.Logo);
+                    NFeImpressao.Texto(ide.NNF), NFeImpressao.Texto(ide.Serie), NFeImpressao.Texto(ide.TpNF), nota.Chave, configuracao.Logo);
                 foreach (var aviso in NFeImpressao.Avisos(nota)) cabecalho.Texto(aviso, true, true);
             });
         r.Quadros(("NATUREZA DA OPERAÇÃO", ide.NatOp, 1),
@@ -63,7 +63,7 @@ internal static class DANFeA4Layout
             {
                 r.Titulo("DUPLICATAS");
                 r.Tabela(new[] { "NÚMERO", "VENCIMENTO", "VALOR R$" }, new double[] { 1, 1, 1 },
-                    info.Cobr.Dup.Select(duplicata => new[] { duplicata.NDup, duplicata.DVenc, NFeImpressao.Dinheiro(duplicata.VDup) }));
+                    info.Cobr.Dup.Select(duplicata => new[] { duplicata.NDup, NFeImpressao.Data(duplicata.DVenc), NFeImpressao.Dinheiro(duplicata.VDup) }));
             }
         }
         var t = info.Total.ICMSTot;
@@ -117,7 +117,7 @@ internal static class DANFeA4Layout
         {
             p.CProd, p.XProd + " " + item.InfAdProd, p.NCM,
             NFeImpressao.Valor(icms, "Orig") + NFeImpressao.Valor(icms, "CST") + NFeImpressao.Valor(icms, "CSOSN"),
-            p.CFOP, p.UCom, NFeImpressao.Numero(p.QCom), NFeImpressao.PrecoUnitario(p.VUnCom), NFeImpressao.Dinheiro(p.VProd),
+            NFeImpressao.Texto(p.CFOP), p.UCom, NFeImpressao.Numero(p.QCom), NFeImpressao.PrecoUnitario(p.VUnCom), NFeImpressao.Dinheiro(p.VProd),
             NFeImpressao.Dinheiro(NFeImpressao.Decimal(icms, "VBC")), NFeImpressao.Dinheiro(NFeImpressao.Decimal(icms, "VICMS")),
             NFeImpressao.Dinheiro(ipi?.VIPI), NFeImpressao.Numero(NFeImpressao.Decimal(icms, "PICMS")), NFeImpressao.Numero(ipi?.PIPI)
         };

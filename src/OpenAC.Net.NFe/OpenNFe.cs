@@ -29,14 +29,20 @@ namespace OpenAC.Net.NFe;
 public sealed class OpenNFe(NFeConfig configuracao, INFeCertificadoProvider certificados = null)
     : IOpenNFeClient
 {
-    private readonly NFeConfig configuracao = (configuracao ?? throw new ArgumentNullException(nameof(configuracao))).Copiar();
-    private readonly INFeCertificadoProvider certificados = certificados ?? new NFeCertificadoProvider(configuracao.Certificado);
+    private readonly NFeConfig configuracao =
+        (configuracao ?? throw new ArgumentNullException(nameof(configuracao))).Copiar();
+
+    private readonly INFeCertificadoProvider certificados =
+        certificados ?? new NFeCertificadoProvider(configuracao.Certificado);
 
     public async Task<NFeAutorizacaoResposta> EnviarAsync(NFeEnvioSolicitacao solicitacao,
         CancellationToken cancellationToken = default)
     {
         ValidarOperacao(cancellationToken);
-        if (solicitacao == null) throw new ArgumentNullException(nameof(solicitacao));
+        
+        if (solicitacao == null) 
+            throw new ArgumentNullException(nameof(solicitacao));
+        
         var lote = solicitacao.Lote;
         var sincrono = solicitacao.Sincrono;
         Numero(lote, 1, 15, nameof(solicitacao.Lote));
@@ -68,7 +74,8 @@ public sealed class OpenNFe(NFeConfig configuracao, INFeCertificadoProvider cert
         return result;
     }
 
-    public async Task<NFeStatusServicoResposta> ConsultarSituacaoServicoAsync(CancellationToken cancellationToken = default)
+    public async Task<NFeStatusServicoResposta> ConsultarSituacaoServicoAsync(
+        CancellationToken cancellationToken = default)
     {
         ValidarOperacao(cancellationToken);
         using var certificate = await ObterCertificadoAsync(cancellationToken).ConfigureAwait(false);
@@ -191,7 +198,7 @@ public sealed class OpenNFe(NFeConfig configuracao, INFeCertificadoProvider cert
         var result = await service.InutilizarAsync(pedido, cancellationToken).ConfigureAwait(false);
         if (result.Documento != null)
             await SalvarAsync(result.Documento.GetXml(), "Inutilizacao",
-                result.Documento.Inutilizacao.InfInut.Id + "-procInutNFe.xml", pedido.Cnpj, cancellationToken)
+                    result.Documento.Inutilizacao.InfInut.Id + "-procInutNFe.xml", pedido.Cnpj, cancellationToken)
                 .ConfigureAwait(false);
 
         return result;
@@ -267,9 +274,9 @@ public sealed class OpenNFe(NFeConfig configuracao, INFeCertificadoProvider cert
         if (nota.InfNFe?.Versao != NFeVersao.v400 || nota.Modelo != configuracao.Geral.Modelo)
             throw new OpenDFeValidationException("Versão/modelo da nota diferem da configuração.");
         var ide = nota.InfNFe.Ide;
-        if (ide?.TpAmb != ((int)configuracao.WebServices.Ambiente).ToString(CultureInfo.InvariantCulture) ||
-            ide.CUF != ((int)configuracao.WebServices.UF.ToCodeUf()).ToString(CultureInfo.InvariantCulture) ||
-            ide.TpEmis != configuracao.Geral.FormaEmissao.GetDFeValue())
+        if (ide?.TpAmb != configuracao.WebServices.Ambiente ||
+            ide.CUF != configuracao.WebServices.UF.ToCodeUf() ||
+            ide.TpEmis.GetDFeValue() != configuracao.Geral.FormaEmissao.GetDFeValue())
             throw new OpenDFeValidationException("UF, ambiente ou emissão da nota diferem da configuração.");
     }
 
@@ -287,7 +294,8 @@ public sealed class OpenNFe(NFeConfig configuracao, INFeCertificadoProvider cert
         ? throw new ArgumentException("Evento nulo.")
         : NFeDocumentCopy.Copiar(item);
 
-    private static IReadOnlyList<NFeProc> Protocolar(IEnumerable<NFeProtNFe> protocolos, IEnumerable<Common.Model.NFe> notas)
+    private static IReadOnlyList<NFeProc> Protocolar(IEnumerable<NFeProtNFe> protocolos,
+        IEnumerable<Common.Model.NFe> notas)
     {
         var docs = new List<NFeProc>();
         foreach (var protocolo in protocolos)
@@ -301,6 +309,7 @@ public sealed class OpenNFe(NFeConfig configuracao, INFeCertificadoProvider cert
             if (!nota.ValidarAssinatura()) throw new OpenDFeValidationException("Assinatura inválida.");
             docs.Add(nota.ComProtocolo(protocolo));
         }
+
         return docs;
     }
 

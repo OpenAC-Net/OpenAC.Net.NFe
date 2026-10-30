@@ -22,16 +22,16 @@ public static class NFCeQrCode
         NFeValidacao.Chave(nota.Chave);
         var dados = nota.InfNFe;
         var ide = dados.Ide;
-        var ambiente = ide.TpAmb;
+        var ambiente = ide.TpAmb.GetDFeValue();
         if (ambiente != ((int)config.WebServices.Ambiente).ToString(CultureInfo.InvariantCulture) ||
-            ide.CUF != ((int)config.WebServices.UF.ToCodeUf()).ToString(CultureInfo.InvariantCulture))
+            ide.CUF != config.WebServices.UF.ToCodeUf())
             throw new ArgumentException("UF/ambiente da NFC-e diferem da configuração.");
-        var offline = ide.TpEmis == "9";
+        var offline = ide.TpEmis == TipoEmissao.OffLine;
         var version = (int)config.Geral.VersaoQRCode;
         if (version != 2 && version != 3) throw new NotSupportedException("QR Code deve ser versão 2 ou 3.");
         var input = nota.Chave + "|" + version + "|" + ambiente;
         var valor = dados.Total.ICMSTot.VNF.ToString("F2", CultureInfo.InvariantCulture);
-        var dia = DateTimeOffset.Parse((string)ide.DhEmi, CultureInfo.InvariantCulture).Day
+        var dia = ide.DhEmi.Day
             .ToString("D2", CultureInfo.InvariantCulture);
         if (version == 2)
         {

@@ -22,7 +22,16 @@ internal static class NFeImpressao
         return new NFeProc { NFe = nota, Versao = nota.InfNFe.Versao };
     }
 
-    internal static string Texto(object valor) => Convert.ToString(valor, CultureInfo.InvariantCulture) ?? "";
+    internal static string Texto(object valor)
+    {
+        if (valor is Enum)
+        {
+            var member = valor.GetType().GetField(valor.ToString());
+            var attribute = member?.GetCustomAttribute<DFeEnumAttribute>();
+            if (attribute != null) return attribute.Value;
+        }
+        return Convert.ToString(valor, CultureInfo.InvariantCulture) ?? "";
+    }
     internal static string Dinheiro(decimal? valor) => (valor ?? 0).ToString("N2", Cultura);
     internal static string PrecoUnitario(decimal valor) => valor.ToString("0.00########", Cultura);
 
@@ -115,9 +124,16 @@ internal static class NFeImpressao
         }
     }
 
-    internal static object Alternativa(object grupo) => grupo?.GetType().GetProperties()
+    internal static object Alternativa(object grupo) => grupo switch
+    {
+        NFeDetImpostoICMS icms => icms.Icms,
+        NFeDetImpostoIPI ipi => ipi.TipoIPI,
+        NFeDetImpostoPIS pis => pis.TipoPIS,
+        NFeDetImpostoCOFINS cofins => cofins.TipoCOFINS,
+        _ => grupo?.GetType().GetProperties()
         .Where(p => p.GetCustomAttribute<DFeElementAttribute>() != null)
-        .Select(p => p.GetValue(grupo)).FirstOrDefault(valor => valor != null);
+        .Select(p => p.GetValue(grupo)).FirstOrDefault(valor => valor != null)
+    };
 
     internal static string Valor(object grupo, string propriedade) =>
         Texto(grupo?.GetType().GetProperty(propriedade)?.GetValue(grupo));
