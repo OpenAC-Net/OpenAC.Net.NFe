@@ -58,7 +58,8 @@ public abstract class NFeServiceClient<TResult, TResposta> : DFeSoapServiceClien
     {
         UseCookies = false,
         AllowAutoRedirect = false,
-        AutomaticDecompression = DecompressionMethods.None
+        AutomaticDecompression = DecompressionMethods.None,
+        MargemValidadeCertificado = Configuracoes.Certificados.MargemValidadeCertificado,
     };
 
     protected override string CriarNomeArquivo(bool resposta) =>

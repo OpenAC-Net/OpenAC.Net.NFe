@@ -7,6 +7,7 @@ public sealed class DANFeEscPosConfig
 {
     /// <summary>Quando não informada, usa as colunas configuradas no componente; exportações usam 48.</summary>
     public int? Colunas { get; set; }
+
     public bool CortarPapel { get; set; } = true;
     public bool CorteParcial { get; set; }
     public int LinhasAvanco { get; set; } = 5;
@@ -24,6 +25,7 @@ public sealed class DANFeEscPosConfig
         copia.Logo = Logo == null ? null : (byte[])Logo.Clone();
         return copia;
     }
+
     internal void Validar(int colunas)
     {
         if (colunas < 24 || colunas > 80) throw new ArgumentOutOfRangeException(nameof(Colunas));

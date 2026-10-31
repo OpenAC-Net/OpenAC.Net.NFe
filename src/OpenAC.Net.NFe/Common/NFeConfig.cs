@@ -6,7 +6,7 @@ using OpenAC.Net.NFe.Services;
 
 namespace OpenAC.Net.NFe.Common;
 
-/// <summary>Opções alteráveis entre operações; cada operação captura uma cópia ao iniciar. Transporte e armazenamento injetados devem aceitar concorrência.</summary>
+/// <summary>Opções capturadas na criação do cliente, como no CT-e. Transporte e armazenamento injetados devem aceitar concorrência.</summary>
 public sealed class NFeConfig : DFeConfigBase<NFeConfigGeral, NFeConfigWebServices, NFeConfigCertificados, NFeConfigArquivos>
 {
     public NFeConfig()
@@ -43,6 +43,10 @@ public sealed class NFeConfig : DFeConfigBase<NFeConfigGeral, NFeConfigWebServic
         copy.Geral.ValidarDigest = Geral.ValidarDigest;
         copy.WebServices.UF = WebServices.UF;
         copy.WebServices.TimeoutOperacao = WebServices.TimeoutOperacao;
+        copy.WebServices.TimeoutTentativa = WebServices.TimeoutTentativa;
+        copy.WebServices.CircuitBreakerHabilitado = WebServices.CircuitBreakerHabilitado;
+        copy.WebServices.TempoVidaHandler = WebServices.TempoVidaHandler;
+        copy.WebServices.TempoVidaConexaoPool = WebServices.TempoVidaConexaoPool;
         copy.WebServices.Ambiente = WebServices.Ambiente;
         copy.WebServices.Salvar = WebServices.Salvar;
         copy.WebServices.Protocolos = WebServices.Protocolos;
@@ -55,6 +59,7 @@ public sealed class NFeConfig : DFeConfigBase<NFeConfigGeral, NFeConfigWebServic
         foreach (var item in WebServices.Enderecos) copy.WebServices.Enderecos.Add(item.Key, item.Value);
         copy.Certificados.Certificado = Certificados.Certificado;
         copy.Certificados.Senha = Certificados.Senha;
+        copy.Certificados.MargemValidadeCertificado = Certificados.MargemValidadeCertificado;
         copy.Certificados.CertificadoBytes = Certificados.CertificadoBytes == null ? null : (byte[])Certificados.CertificadoBytes.Clone();
         copy.Arquivos.PathSchemas = Arquivos.PathSchemas;
         copy.Arquivos.PathSalvar = Arquivos.PathSalvar;

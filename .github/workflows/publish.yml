@@ -1,0 +1,155 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+name: publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Versão do pacote (vazio gera uma versão de CI)'
+        required: false
+        type: string
+  release:
+    types:
+      - published
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1'
+  DOTNET_NOLOGO: 'true'
+  NuGetDirectory: ${{ github.workspace }}/nuget
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  create_nuget:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: src
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            8.x
+            9.x
+            10.x
+
+      - name: Resolve package version
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          MANUAL_VERSION: ${{ inputs.version }}
+        run: |
+          if ($env:GITHUB_EVENT_NAME -eq 'release') {
+              $version = $env:RELEASE_TAG -replace '^v', ''
+          } elseif (-not [string]::IsNullOrWhiteSpace($env:MANUAL_VERSION)) {
+              $version = $env:MANUAL_VERSION
+          } else {
+              [xml]$properties = Get-Content Directory.Build.props
+              $version = "$($properties.Project.PropertyGroup.Version)-ci.$env:GITHUB_RUN_NUMBER"
+          }
+          if ($version -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$') {
+              throw "Versão NuGet inválida: $version. Use uma tag como v1.0.0-beta.1."
+          }
+          "NuGetVersion=$version" >> $env:GITHUB_ENV
+
+      - name: Restore NuGet packages
+        run: dotnet restore OpenAC.Net.NFe.slnx "-p:Version=$env:NuGetVersion" "-p:PackageVersion=$env:NuGetVersion"
+
+      - name: Build solution
+        run: dotnet build OpenAC.Net.NFe.slnx --configuration Release --no-restore "-p:Version=$env:NuGetVersion" "-p:PackageVersion=$env:NuGetVersion" -p:GeneratePackageOnBuild=false
+
+      - name: Run tests
+        run: dotnet test --project OpenAC.Net.NFe.Tests/OpenAC.Net.NFe.Tests.csproj --configuration Release --no-build --report-trx --results-directory "$env:GITHUB_WORKSPACE/TestResults"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-publish
+          path: ${{ github.workspace }}/TestResults/**
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Pack NuGet packages
+        run: dotnet pack OpenAC.Net.NFe.slnx --configuration Release --no-build --no-restore "-p:Version=$env:NuGetVersion" "-p:PackageVersion=$env:NuGetVersion" --output "$env:NuGetDirectory"
+
+      - name: Upload NuGet packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: nuget
+          path: ${{ env.NuGetDirectory }}/*.nupkg
+          if-no-files-found: error
+          retention-days: 7
+
+  validate_nuget:
+    runs-on: ubuntu-latest
+    needs: [create_nuget]
+    steps:
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: nuget
+          path: ${{ env.NuGetDirectory }}
+
+      - name: Install NuGet validator
+        run: dotnet tool install Meziantou.Framework.NuGetPackageValidation.Tool --global --version 2.0.18
+
+      # Validação dos metadados e das assemblies dos pacotes.
+      - name: Validate packages
+        run: |
+          $packages = @(Get-ChildItem -Path $env:NuGetDirectory -Filter *.nupkg -File)
+          if ($packages.Count -eq 0) { throw "Nenhum pacote NuGet encontrado." }
+          foreach ($package in $packages) {
+              meziantou.validate-nuget-package $package.FullName --rules "AssembliesMustBeOptimized,AuthorMustBeSet,LicenseMustBeSet,ReadmeMustBeSet,RepositoryMustBeSet"
+              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+  publish_nuget:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    needs: [validate_nuget]
+    env:
+      NUGET_APIKEY: ${{ secrets.NUGET_APIKEY }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: nuget
+          path: ${{ env.NuGetDirectory }}
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Publish NuGet packages
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:NUGET_APIKEY)) { throw "Configure o secret NUGET_APIKEY." }
+          foreach ($package in (Get-ChildItem -Path $env:NuGetDirectory -Filter *.nupkg -File)) {
+              dotnet nuget push $package.FullName --api-key $env:NUGET_APIKEY --source https://api.nuget.org/v3/index.json --skip-duplicate
+              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+  webhook:
+    runs-on: ubuntu-latest
+    needs: [publish_nuget]
+    env:
+      DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+    steps:
+      - name: Discord notification
+        if: env.DISCORD_WEBHOOK != ''
+        uses: Ilshidur/action-discord@0.4.0
+        with:
+          args: 'Uma nova versão do **OpenAC.Net.NFe** foi publicada! Confira agora em [NuGet.org](https://www.nuget.org/packages/OpenAC.Net.NFe).'

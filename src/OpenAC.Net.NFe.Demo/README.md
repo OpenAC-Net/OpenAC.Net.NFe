@@ -12,7 +12,7 @@ Na raiz do repositório, com o SDK .NET 10 instalado:
 dotnet run --project src/OpenAC.Net.NFe.Demo
 ```
 
-Requer uma sessão gráfica no Windows, Linux ou macOS. Os testes da interface executam em modo headless.
+Requer uma sessão gráfica no Windows, Linux ou macOS.
 
 ## Operações
 
@@ -36,7 +36,7 @@ Requer uma sessão gráfica no Windows, Linux ou macOS. Os testes da interface e
 6. A autorização síncrona aceita um documento; a assíncrona aceita até 50 NF-e modelo 55. NFC-e usa envio síncrono individual. O recibo retornado e as cópias assinadas ficam disponíveis na sessão para consultar o processamento.
 7. Use **Salvar XMLs** para exportar os documentos carregados/assinados ou os documentos processados após autorização. No envio assíncrono, consulte o recibo para associar os protocolos.
 
-O demo mantém uma instância de `IOpenNFeClient` e altera suas `Configuracoes` antes das operações, seguindo o padrão de uso do CT-e. A biblioteca captura as configurações ao iniciar cada operação. Os documentos são fornecidos pelas solicitações explícitas da API NF-e.
+O demo cria um `IOpenNFeClient` com as opções selecionadas para cada operação, seguindo o CT-e atual. A biblioteca captura as configurações no construtor; alterações posteriores na tela são aplicadas ao criar o próximo cliente. Os documentos são fornecidos pelas solicitações explícitas da API NF-e.
 
 As configurações são salvas em `OpenAC.Net/NFe.Demo/nfe.json` dentro do diretório de dados locais do usuário. A senha do certificado e o CSC permanecem somente na sessão. Os logs visíveis são um histórico da sessão. Em **Webservices**, consulte os endereços resolvidos para a configuração selecionada, carregue um catálogo XML compatível com a biblioteca ou exporte o catálogo em uso.
 
@@ -61,7 +61,7 @@ Esses comandos geram arquivos locais. Para listar a ajuda, use `-- --help`.
 A partir de `src`:
 
 ```sh
-dotnet test --project OpenAC.Net.NFe.Demo.Tests/OpenAC.Net.NFe.Demo.Tests.csproj
+dotnet test --project OpenAC.Net.NFe.Tests/OpenAC.Net.NFe.Tests.csproj
 ```
 
-Os testes TUnit verificam navegação, configuração por modelo, endpoints, persistência, importação e exportação de XML, cancelamento e respostas SOAP. Para capturar as telas, defina `OPENAC_DEMO_SCREENSHOTS` com um diretório de saída.
+Os testes TUnit da biblioteca verificam isolamento da configuração capturada, preservação dos documentos originais, autorização individual e em lote, chamadas concorrentes, cancelamento, respostas SOAP e impressão.

@@ -22,7 +22,7 @@ public sealed class CoreIntegrationTests
     private const string Status = "<retConsStatServ xmlns='http://www.portalfiscal.inf.br/nfe'><cStat>107</cStat></retConsStatServ>";
 
     [Test]
-    public async Task ClienteReutilizaConfiguracoesAlteradasAntesDaOperacaoComoNoCTe()
+    public async Task ClienteCapturaConfiguracaoNoConstrutorComoNoCTe()
     {
         using var cert = Fixtures.Certificate();
         var transport = new CaptureTransport((_, _) => Task.FromResult(Reply(Status)));
@@ -32,20 +32,19 @@ public sealed class CoreIntegrationTests
         var client = new OpenNFe(config);
         config.WebServices.UF = DFeSiglaUF.MS;
         config.WebServices.Enderecos[TipoServicoNFe.NFeStatusServico] = "https://empresa-b.test/status";
+        config.Geral.VersaoDFe = NFeVersao.v310;
         var response = await client.ConsultarSituacaoServicoAsync();
-        await Assert.That((await Assert.That(transport.Requests).HasSingleItem()).Url.Host).IsEqualTo("empresa-b.test");
+        await Assert.That((await Assert.That(transport.Requests).HasSingleItem()).Url.Host).IsEqualTo("empresa-a.test");
         await Assert.That(transport.Requests.Single().Url.Query).IsEqualTo("");
-        await Assert.That(response.XmlEnvio).Contains("<cUF>50</cUF>");
+        await Assert.That(response.XmlEnvio).Contains("<cUF>35</cUF>");
         await Assert.That(response.EnvelopeEnvio).Contains("soapenv:Envelope");
         await Assert.That(response.EnvelopeRetorno).Contains("retConsStatServ");
-        await Assert.That(ReferenceEquals(config, client.Configuracoes)).IsTrue();
-        client.Configuracoes.Geral.VersaoDFe = NFeVersao.v310;
-        await Assert.That(() => client.ConsultarSituacaoServicoAsync()).ThrowsExactly<NotSupportedException>();
+        await Assert.That(() => new OpenNFe(config).ConsultarSituacaoServicoAsync()).ThrowsExactly<NotSupportedException>();
         await Assert.That(transport.Requests.Count).IsEqualTo(1);
     }
 
     [Test]
-    public async Task OperacaoEmAndamentoUsaCopiaMasProximaChamadaUsaNovasConfiguracoes()
+    public async Task ConfiguracaoCapturadaEhMantidaEmTodasAsChamadasENovoClienteUsaNovasOpcoes()
     {
         using var certificate = Fixtures.Certificate();
         var started = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -71,25 +70,81 @@ public sealed class CoreIntegrationTests
         var firstResponse = await first;
         var secondResponse = await client.ConsultarSituacaoServicoAsync();
         await Assert.That(firstResponse.XmlEnvio).Contains("<cUF>35</cUF>");
-        await Assert.That(secondResponse.XmlEnvio).Contains("<cUF>50</cUF>");
-        await Assert.That(transport.Requests.Any(request => request.Url.Host == "empresa-a.test")).IsTrue();
+        await Assert.That(secondResponse.XmlEnvio).Contains("<cUF>35</cUF>");
+        var thirdResponse = await new OpenNFe(config).ConsultarSituacaoServicoAsync();
+        await Assert.That(thirdResponse.XmlEnvio).Contains("<cUF>50</cUF>");
+        await Assert.That(transport.Requests.Count(request => request.Url.Host == "empresa-a.test")).IsEqualTo(2);
         await Assert.That(transport.Requests.Any(request => request.Url.Host == "empresa-b.test")).IsTrue();
     }
 
     [Test]
-    public async Task CertificadoAtualizadoEntreChamadasEhUsadoPelaMesmaInstancia()
+    public async Task CertificadoCapturadoEhMantidoENovoClienteUsaOutroCertificado()
     {
         using var first = Fixtures.Certificate();
         using var second = Fixtures.Certificate();
         var transport = new CaptureTransport((_, _) => Task.FromResult(Reply(Status)));
-        var client = new OpenNFe();
-        client.Configuracoes.HttpTransport = transport;
-        client.Configuracoes.Certificado = first;
+        var config = Fixtures.Config(first);
+        config.HttpTransport = transport;
+        var client = new OpenNFe(config);
         await client.ConsultarSituacaoServicoAsync();
-        client.Configuracoes.Certificado = second;
+        config.Certificado = second;
         await client.ConsultarSituacaoServicoAsync();
-        await Assert.That(transport.Requests.Any(request => request.Thumbprint == first.Thumbprint)).IsTrue();
-        await Assert.That(transport.Requests.Any(request => request.Thumbprint == second.Thumbprint)).IsTrue();
+        await new OpenNFe(config).ConsultarSituacaoServicoAsync();
+        await Assert.That(transport.Requests.Count(request => request.Thumbprint == first.Thumbprint)).IsEqualTo(2);
+        await Assert.That(transport.Requests.Count(request => request.Thumbprint == second.Thumbprint)).IsEqualTo(1);
+    }
+
+    [Test]
+    [Arguments(55)]
+    [Arguments(65)]
+    public async Task AutorizarDocumentoIndividualUsaEnvioSincronoEPreservaOriginal(int model)
+    {
+        using var certificate = Fixtures.Certificate();
+        var note = Fixtures.Nota(model);
+        var original = note.GetXml();
+        var config = Fixtures.Config(certificate, model);
+        config.HttpTransport = new CaptureTransport((request, _) =>
+        {
+            var sent = NotaFiscal.Load(request.Xml.Descendants(XmlFixture.Ns + "NFe").Single().ToString(SaveOptions.DisableFormatting));
+            return Task.FromResult(Reply(new XElement(XmlFixture.Ns + "retEnviNFe",
+                new XElement(XmlFixture.Ns + "cStat", "104"), Fixtures.Protocolo(sent).WriteToXml()).ToString(SaveOptions.DisableFormatting)));
+        });
+        IOpenNFeClient client = new OpenNFe(config);
+        var response = await client.AutorizarAsync(note);
+        await Assert.That(response.CStat).IsEqualTo(104);
+        await Assert.That(response.XmlEnvio).Contains("<indSinc>1</indSinc>");
+        await Assert.That((await Assert.That(response.Documentos).HasSingleItem()).Autorizado).IsTrue();
+        await Assert.That(response.Documentos[0].ValidarAssinatura()).IsTrue();
+        await Assert.That(note.GetXml()).IsEqualTo(original);
+        await Assert.That(note.Assinado).IsFalse();
+    }
+
+    [Test]
+    public async Task MesmoClienteAutorizaEmParaleloSemCompartilharNotasOuCertificados()
+    {
+        using var certificate = Fixtures.Certificate();
+        var note = Fixtures.Nota();
+        var entered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var count = 0;
+        var transport = new CaptureTransport(async (request, token) =>
+        {
+            if (Interlocked.Increment(ref count) == 2) entered.TrySetResult(true);
+            await entered.Task.WaitAsync(token);
+            var sent = NotaFiscal.Load(request.Xml.Descendants(XmlFixture.Ns + "NFe").Single().ToString(SaveOptions.DisableFormatting));
+            return Reply(new XElement(XmlFixture.Ns + "retEnviNFe", new XElement(XmlFixture.Ns + "cStat", "104"),
+                Fixtures.Protocolo(sent).WriteToXml()).ToString(SaveOptions.DisableFormatting));
+        });
+        var config = Fixtures.Config(certificate);
+        config.HttpTransport = transport;
+        var client = new OpenNFe(config);
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        var responses = await Task.WhenAll(client.AutorizarAsync(note, deadline.Token), client.AutorizarAsync(note, deadline.Token));
+        foreach (var response in responses)
+            await Assert.That(response.Documentos[0].ValidarAssinatura()).IsTrue();
+        await Assert.That(responses[0].DocumentosEnviados[0]).IsNotSameReferenceAs(responses[1].DocumentosEnviados[0]);
+        await Assert.That(transport.Requests.Last().Certificate).IsNotSameReferenceAs(transport.Requests.First().Certificate);
+        await Assert.That(note.Assinado).IsFalse();
+        await Assert.That(certificate.HasPrivateKey).IsTrue();
     }
 
     [Test]
@@ -209,9 +264,9 @@ public sealed class CoreIntegrationTests
         try
         {
             var client = new OpenNFe(config);
+            if (!arquivo) Array.Clear(pfx);
             var operation = client.ConsultarSituacaoServicoAsync();
             await started.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            if (!arquivo) Array.Clear(pfx);
             release.TrySetResult(true);
             await Assert.That((await operation).CStat).IsEqualTo(107);
         }

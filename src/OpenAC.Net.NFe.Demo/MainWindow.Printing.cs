@@ -47,9 +47,9 @@ public partial class MainWindow
         {
             var root = XElement.Parse(xml);
             XNamespace ns = NFeConst.Namespace;
-            if (root.Name == ns + "procEventoNFe") return renderer.GerarEventoPDF(token, NFeProcEvento.ReadFromXml(root));
-            if (root.Name == ns + "evento") return renderer.GerarEventoPDF(token, new NFeProcEvento { Evento = NFeEvento.ReadFromXml(root) });
-            if (root.Name == ns + "procInutNFe") return renderer.GerarInutilizacaoPDF(NFeProcInutilizacao.ReadFromXml(root), token);
+            if (root.Name == ns + "procEventoNFe") return renderer.GerarEventoPDF(token, NFeProcEvento.ReadFromXml(root) ?? throw new ArgumentException("Evento processado inválido."));
+            if (root.Name == ns + "evento") return renderer.GerarEventoPDF(token, new NFeProcEvento { Evento = NFeEvento.ReadFromXml(root) ?? throw new ArgumentException("Evento inválido.") });
+            if (root.Name == ns + "procInutNFe") return renderer.GerarInutilizacaoPDF(NFeProcInutilizacao.ReadFromXml(root) ?? throw new ArgumentException("Inutilização processada inválida."), token);
             throw new ArgumentException("Esperado evento, procEventoNFe ou procInutNFe no namespace oficial.");
         }, token);
         await SavePdfAsync(destination, bytes, token);

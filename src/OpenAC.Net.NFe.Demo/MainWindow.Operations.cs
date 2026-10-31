@@ -9,7 +9,7 @@ public partial class MainWindow
     {
         var config = CreateConfiguration();
         documents.RequireSendable(config, settings.Synchronous);
-        var response = await Client().EnviarAsync(new NFeEnvioSolicitacao
+        var response = await createClient(config).EnviarAsync(new NFeEnvioSolicitacao
         {
             Lote = settings.Batch, Sincrono = settings.Synchronous,
             Documentos = documents.Items.Select(item => item.NFe).ToArray()
@@ -36,7 +36,7 @@ public partial class MainWindow
         token.ThrowIfCancellationRequested();
         var config = CreateConfiguration();
         if (documents.Sent.Count > 0) documents.RequireMatching(config);
-        var response = await Client().ConsultaReciboAsync(new NFeReciboSolicitacao
+        var response = await createClient(config).ConsultaReciboAsync(new NFeReciboSolicitacao
         {
             Recibo = Digits(values["recibo"]), Documentos = documents.Sent
         }, token);
@@ -64,7 +64,7 @@ public partial class MainWindow
         if (new[] { values["ultimo"], values["nsu"], values["chave"] }.Count(value => !string.IsNullOrWhiteSpace(value)) != 1)
             throw new ArgumentException("Informe somente um filtro: último NSU, NSU específico ou chave de acesso.");
         token.ThrowIfCancellationRequested();
-        var response = await Client().DistribuicaoDFeAsync(new NFeDistribuicaoSolicitacao
+        var response = await Client().ConsultarDistribuicaoAsync(new NFeDistribuicaoSolicitacao
         {
             CpfCnpj = Digits(values["documento"]), UltimoNsu = OptionalNsu(values["ultimo"]),
             Nsu = OptionalNsu(values["nsu"]), Chave = string.IsNullOrWhiteSpace(values["chave"]) ? null : Digits(values["chave"])

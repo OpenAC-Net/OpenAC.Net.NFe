@@ -7,10 +7,12 @@ namespace OpenAC.Net.NFe.DANFe.EscPos.Common;
 internal sealed class CupomMemoriaConfig : BaseConfig
 {
     static CupomMemoriaConfig() => OpenDeviceFactory.Register<CupomMemoriaConfig, CupomMemoriaStream>();
+
     public CupomMemoriaConfig(MemoryStream saida) : base("NFCeEscPosMemoria")
     {
         Saida = saida;
         ControlePorta = false;
     }
+
     internal MemoryStream Saida { get; }
 }

@@ -1,4 +1,21 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
-  <ItemGroup><ProjectReference Include="../OpenAC.Net.NFe.DANFe.PDFSharp/OpenAC.Net.NFe.DANFe.PDFSharp.csproj" /><PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.14" /><None Include="README.md" Pack="true" PackagePath="/" /></ItemGroup>
+    <PropertyGroup>
+        <TargetFrameworks>net462;net48;netstandard2.0;net8.0;net9.0;net10.0</TargetFrameworks>
+        <AssemblyName>OpenAC.Net.NFe.DANFe.PDFSharp.Web</AssemblyName>
+        <RootNamespace>OpenAC.Net.NFe.DANFe.PDFSharp.Web</RootNamespace>
+        <SignAssembly>true</SignAssembly>
+        <Description>Integração ASP.NET Core para geração de DANFE de NF-e e NFC-e em PDF com PDFsharp.</Description>
+        <PackageTags>OpenAC.Net NFe NFCe OpenNFe DANFE PDFSharp ASP.NET Core Web</PackageTags>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <ImplicitUsings>enable</ImplicitUsings>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="../OpenAC.Net.NFe.DANFe.PDFSharp/OpenAC.Net.NFe.DANFe.PDFSharp.csproj"/>
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.14"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Include="README.md" Pack="true" PackagePath="/"/>
+    </ItemGroup>
 </Project>

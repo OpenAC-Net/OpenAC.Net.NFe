@@ -63,9 +63,12 @@ public sealed class ServiceTests
     {
         using var cert=Fixtures.Certificate();var nota=Fixtures.Nota();var config=Fixtures.Config(cert);var evento=NFeEvento.Cancelamento(nota.Chave,"12345678000195","135260000000001","Cancelamento de teste solicitado pelo cliente");
         var t=new FakeTransport{Response=_=>"<retEnvEvento xmlns='http://www.portalfiscal.inf.br/nfe'><cStat>128</cStat><xMotivo>Lote de Evento Processado</xMotivo></retEnvEvento>"};
+        var original = evento.GetXml();
         var client=Fixtures.Client(config,t);await Assert.That((await client.EnviarEventoAsync(new NFeEventoSolicitacao { Eventos =
             [evento]
         })).CStat).IsEqualTo(128);
+        await Assert.That(evento.GetXml()).IsEqualTo(original);
+        await Assert.That(evento.ValidarAssinatura()).IsFalse();
         var signed=evento.Assinar(config);var pdf=new OpenDANFe().GerarEventoPDF(signed);await Assert.That(pdf.Length>1000).IsTrue();
         var dir=Path.Combine(AppContext.BaseDirectory,"Artifacts");Directory.CreateDirectory(dir);File.WriteAllBytes(Path.Combine(dir,"evento-cancelamento.pdf"),pdf);
     }

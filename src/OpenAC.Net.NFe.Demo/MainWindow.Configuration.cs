@@ -133,7 +133,7 @@ public partial class MainWindow
     internal NFeConfig CreateConfiguration()
     {
         var current = ReadSettings();
-        var config = client.Configuracoes;
+        var config = new NFeConfig();
         config.Geral.Modelo = current.Model;
         config.Geral.FormaEmissao = current.Emission;
         config.Geral.VersaoDFe = NFeVersao.v400;

@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using OpenAC.Net.DFe.Core;
 using OpenAC.Net.NFe.Web;
 using System.Threading.Tasks;
+using System.Security.Cryptography.X509Certificates;
 
 namespace OpenAC.Net.NFe.Tests;
 
@@ -29,7 +30,7 @@ public sealed class ExtendedTests
             Response = _ => "<retDistDFeInt xmlns='http://www.portalfiscal.inf.br/nfe'><cStat>137</cStat></retDistDFeInt>"
         };
         var cliente = Fixtures.Client(new NFeConfig(), transporte);
-        var resposta = await cliente.DistribuicaoDFeAsync(new NFeDistribuicaoSolicitacao
+        var resposta = await cliente.ConsultarDistribuicaoAsync(new NFeDistribuicaoSolicitacao
         { CpfCnpj = "12345678000195", UltimoNsu = "000000000000000" });
         await Assert.That(resposta.CStat).IsEqualTo(137);
         await Assert.That(transporte.Request.Endereco.Host).IsEqualTo("hom1.nfe.fazenda.gov.br");
@@ -85,13 +86,12 @@ public sealed class ExtendedTests
     [Test]public async Task FactoryWebCriaClientesIndependentesPorSessao()
     {
         using var cert=Fixtures.Certificate();var config=Fixtures.Config(cert);
-        var services=new ServiceCollection();services.AddNFe(c=>{c.Certificado=cert;c.Geral.CSC="ORIGINAL";});
+        var services=new ServiceCollection();services.AddNFe(c=>{c.Certificados.CertificadoBytes=cert.Export(X509ContentType.Pfx, "test");c.Certificados.Senha="test";c.Geral.CSC="ORIGINAL";});
         using var provider=services.BuildServiceProvider();using var scope=provider.CreateScope();var factory=scope.ServiceProvider.GetRequiredService<IOpenNFeClientFactory>();
-        using var a=await factory.CreateAsync("empresa-a");using var b=await factory.CreateAsync("empresa-b");
-        await Assert.That(b.Client).IsNotSameReferenceAs(a.Client);
-        await Assert.That(a.Client).IsAssignableTo<IOpenNFeClient>();
-        a.Dispose();
+        var a=await factory.CriarAsync("empresa-a");var b=await factory.CriarAsync("empresa-b");
+        await Assert.That(b).IsNotSameReferenceAs(a);
+        await Assert.That(a).IsAssignableTo<IOpenNFeClient>();
         await Assert.That(cert.HasPrivateKey).IsTrue();
-        await Assert.That(() => b.Client.ConsultarAsync("chave-invalida")).ThrowsExactly<ArgumentException>();
+        await Assert.That(() => b.ConsultarAsync("chave-invalida")).ThrowsExactly<ArgumentException>();
     }
 }

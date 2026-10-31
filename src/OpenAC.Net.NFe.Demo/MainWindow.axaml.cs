@@ -12,7 +12,7 @@ namespace OpenAC.Net.NFe.Demo;
 
 public partial class MainWindow : Window
 {
-    private readonly IOpenNFeClient client;
+    private readonly Func<NFeConfig, IOpenNFeClient> createClient;
     private readonly string configurationPath;
     private readonly DemoDocuments documents = new();
     private readonly ObservableCollection<ServiceEndpoint> endpoints = [];
@@ -26,7 +26,7 @@ public partial class MainWindow : Window
 
     internal MainWindow(Func<NFeConfig, IOpenNFeClient> clientFactory, string configurationFile)
     {
-        client = clientFactory(new NFeConfig());
+        createClient = clientFactory;
         configurationPath = configurationFile;
         InitializeComponent();
         ServiceList.ItemsSource = endpoints;
@@ -92,11 +92,7 @@ public partial class MainWindow : Window
         ConnectSettingsEvents();
     }
 
-    private IOpenNFeClient Client()
-    {
-        CreateConfiguration();
-        return client;
-    }
+    private IOpenNFeClient Client() => createClient(CreateConfiguration());
 
     private async Task RunAsync(string name, Func<CancellationToken, Task> action)
     {

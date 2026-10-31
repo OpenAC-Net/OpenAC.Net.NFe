@@ -65,7 +65,7 @@ public sealed class CatalogTests
     }
 
     [Test]
-    public async Task CatalogoCustomizadoAtualizadoEhUsadoNaProximaOperacao()
+    public async Task CatalogoCapturadoFicaIsoladoENovoClienteUsaCatalogoAtualizado()
     {
         var path = Path.Combine(Path.GetTempPath(), "nfe-services-" + Guid.NewGuid().ToString("N") + ".xml");
         using var cert = Fixtures.Certificate();
@@ -85,7 +85,9 @@ public sealed class CatalogTests
             config.Arquivos.ArquivoServicos = "";
             config.Arquivos.ArquivoServicos = path;
             await Assert.That((await client.ConsultarSituacaoServicoAsync()).CStat).IsEqualTo(107);
-            await Assert.That((await Assert.That(transport.Requests).HasSingleItem()).Url.Host).IsEqualTo("catalogo-b.test");
+            await Assert.That((await Assert.That(transport.Requests).HasSingleItem()).Url.Host).IsEqualTo("catalogo-a.test");
+            await new OpenNFe(config).ConsultarSituacaoServicoAsync();
+            await Assert.That(transport.Requests.Any(request => request.Url.Host == "catalogo-b.test")).IsTrue();
         }
         finally { File.Delete(path); }
     }

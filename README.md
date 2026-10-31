@@ -39,7 +39,7 @@ Desenvolvida pelo time **OpenAC .Net**, utiliza o **OpenAC.Net.DFe.Core** para s
 
 O projeto contempla os leiautes **3.10 e 4.00**. Os modelos compartilham as classes; `InfNFe.Versao` determina os campos serializados. A troca de versão não converte automaticamente informações exclusivas de um leiaute.
 
-As bibliotecas de emissão e impressão atendem a **.NET Framework 4.6.2/4.8**, **.NET Standard 2.0** e **.NET 8/9/10**. Os módulos Web atendem a **.NET 8/9/10**.
+As bibliotecas de emissão, impressão e integração Web atendem a **.NET Framework 4.6.2/4.8**, **.NET Standard 2.0** e **.NET 8/9/10**.
 
 ---
 
@@ -125,7 +125,7 @@ IOpenNFeClient nfe = new OpenNFe(config);
 
 Também são aceitos PFX em `Certificados.CertificadoBytes`, certificado instalado ou uma instância em `NFeConfig.Certificado`. Para especializar a obtenção, implemente `INFeCertificadoProvider`.
 
-`OpenNFe.Configuracoes` pode ser alterada entre operações, como no CT-e. Cada chamada captura uma cópia das configurações vigentes e copia os documentos recebidos. O cliente pode ser reutilizado após mudanças de UF, ambiente, certificado ou endpoints. A instância fornecida em `Certificado` pertence à aplicação; cada operação usa e descarta sua própria cópia.
+`OpenNFe` captura uma cópia da configuração no construtor, como o CT-e atual, e copia os documentos recebidos por operação. Para mudar UF, ambiente, certificado ou endpoints, crie outro cliente com a nova configuração. A instância fornecida em `Certificado` pertence à aplicação; cada operação usa e descarta sua própria cópia.
 
 ### 2. Montando uma NF-e
 
@@ -368,7 +368,7 @@ O documento processado é disponibilizado quando o retorno confirma a inutiliza�
 ## 📥 Distribuição DF-e
 
 ```csharp
-var distribuicao = await nfe.DistribuicaoDFeAsync(new NFeDistribuicaoSolicitacao
+var distribuicao = await nfe.ConsultarDistribuicaoAsync(new NFeDistribuicaoSolicitacao
 {
     CpfCnpj = "12345678000195",
     UltimoNsu = "000000000000000"
@@ -483,33 +483,40 @@ Para uma única empresa, registre a configuração direta:
 
 ```csharp
 using Microsoft.Extensions.DependencyInjection;
+using OpenAC.Net.NFe;
 using OpenAC.Net.NFe.Web;
 
 var services = new ServiceCollection();
-services.AddNFe(options =>
+services.AddOpenNFe(options =>
 {
-    options.Certificado = certificado;
+    options.Certificados.CertificadoBytes = pfxBytes;
+    options.Certificados.Senha = senhaPfx;
     options.Geral.Modelo = ModeloNFe.NFe;
     options.WebServices.UF = DFeSiglaUF.SP;
     options.WebServices.Ambiente = DFeTipoAmbiente.Homologacao;
     options.Arquivos.PathSchemas = config.Arquivos.PathSchemas;
+    options.WebServices.TimeoutOperacao = TimeSpan.FromSeconds(100);
+    options.WebServices.TimeoutTentativa = TimeSpan.FromSeconds(60);
+    options.WebServices.CircuitBreakerHabilitado = false;
 });
 ```
 
-Para múltiplas empresas, implemente `INFeConfigurationProvider` e `INFeCertificateProvider` e registre `AddOpenNFeWebMultiTenant<MeuConfigurationProvider, MeuCertificateProvider>()` no lugar de `AddNFe`.
+Para múltiplas empresas, implemente `INFeConfigurationProvider<NFeConfig>.GetConfigurationAsync` e `INFeCertificateProvider.ConfigureAsync` e registre `AddOpenNFeMultiTenant<MeuConfigurationProvider, MeuCertificateProvider>()` no lugar de `AddOpenNFe`. A factory copia a configuração antes de aplicar certificado e infraestrutura, como no CT-e.
 
-Receba `IOpenNFeClientFactory` por injeção e abra uma sessão para a empresa:
+Receba `IOpenNFeClientFactory` por injeção e crie um cliente para a empresa:
 
 ```csharp
 using var provider = services.BuildServiceProvider();
 using var scope = provider.CreateScope();
 var factory = scope.ServiceProvider.GetRequiredService<IOpenNFeClientFactory>();
 
-using var sessao = await factory.CreateAsync("empresa-1", cancellationToken);
-var statusEmpresa = await sessao.Client.ConsultarSituacaoServicoAsync(cancellationToken);
+IOpenNFeClient cliente = await factory.CriarAsync("empresa-1", cancellationToken);
+var statusEmpresa = await cliente.ConsultarSituacaoServicoAsync(cancellationToken);
 ```
 
-Descarte a sessão após o uso. A fábrica separa os handlers HTTP por empresa, certificado e autoridade HTTPS. A instrumentação usa `ActivitySource` e `Meter` chamados `OpenAC.Net.NFe.Web`, sem conteúdo fiscal ou CSC. Veja o [README Web](src/OpenAC.Net.NFe.Web/README.md).
+Cada operação obtém e descarta seu próprio certificado por meio de `INFeCertificadoProvider`, do namespace `OpenAC.Net.NFe.Certificates`. O pool HTTP separa empresa, certificado, protocolo TLS e autoridade HTTPS. Cancelamentos do chamador são preservados; falhas de transporte geram `NFeTechnicalException`, e rejeições fiscais permanecem no resultado. O transporte não repete POSTs fiscais automaticamente.
+
+Configure a persistência em `Arquivos.Salvar` e `WebServices.Salvar`, independentemente, e o diretório em `Arquivos.PathSalvar`. O Web acrescenta o hash do ID da empresa ao caminho configurado. Um `IDFeDocumentStore` registrado pela aplicação é preservado. A instrumentação usa `ActivitySource` e `Meter` chamados `OpenAC.Net.NFe.Web`, sem conteúdo fiscal ou CSC. Veja o [README Web](src/OpenAC.Net.NFe.Web/README.md).
 
 Para PDF, use `AddDANFePdfSharp` e injete `IOpenDANFeWeb`. `IDANFeConfigurationProvider` permite definir a configuração de impressão por empresa; cada chamada utiliza uma instância independente de `OpenDANFe`. Veja o [README PDFSharp.Web](src/OpenAC.Net.NFe.DANFe.PDFSharp.Web/README.md).
 
@@ -524,7 +531,7 @@ Para PDF, use `AddDANFePdfSharp` e injete `IOpenDANFeWeb`. `IDANFeConfigurationP
 - **Transporte personalizado:** configure `NFeConfig.HttpTransport` com uma implementação de `IDFeHttpTransport`.
 - **Endereços de serviço:** use `WebServices.Enderecos[TipoServicoNFe]` ou um catálogo XML em `Arquivos.ArquivoServicos`.
 
-Assim como no CT-e, `OpenNFe.Configuracoes` permanece acessível e alterável entre operações, e `new OpenNFe()` usa as configurações padrão. Cada operação captura uma cópia das configurações vigentes ao iniciar; alterações posteriores valem para a próxima chamada. Use uma instância por fluxo e configure-a antes de iniciar a operação. Os documentos continuam sendo informados explicitamente nas solicitações.
+Assim como no CT-e atual, `OpenNFe` recebe uma configuração no construtor e mantém uma cópia isolada. As operações recebem dados e cancelamento explicitamente, sem coleção compartilhada. A mesma instância pode executar operações concorrentes se os providers, transportes e stores injetados também suportarem concorrência. `AutorizarAsync(documento)` autoriza uma nota individual; `EnviarAsync(solicitacao)` atende os lotes da NF-e. A consulta de distribuição usa `ConsultarDistribuicaoAsync(solicitacao)`.
 
 O catálogo de serviços fica em `Resources/services.xml`. A aplicação controla retomadas e consultas; os POSTs fiscais não são repetidos automaticamente. Providers, transportes e stores compartilhados devem aceitar concorrência.
 
@@ -538,12 +545,15 @@ Para desenvolver a solução, utilize o **SDK .NET 10**. Os testes usam **TUnit*
 cd src
 dotnet build OpenAC.Net.NFe.slnx
 dotnet test --project OpenAC.Net.NFe.Tests/OpenAC.Net.NFe.Tests.csproj
-dotnet test --project OpenAC.Net.NFe.Demo.Tests/OpenAC.Net.NFe.Demo.Tests.csproj
 ```
 
 O `src/global.json` seleciona o runner **Microsoft.Testing.Platform**. Execute os comandos de teste a partir de `src`. Para gerar relatório TRX, acrescente `--report-trx` ao comando. A configuração segue a [documentação do TUnit](https://tunit.dev/docs/getting-started/running-your-tests/).
 
-A biblioteca referencia `OpenAC.Net.DFe.Core` **1.8.0-beta.6**. Para desenvolver com um projeto local do Core, informe explicitamente `-p:DFeCoreProject=/caminho/OpenAC.Net.DFe.Core.csproj`.
+As configurações comuns ficam em dois arquivos carregados automaticamente pelo MSBuild. `src/Directory.Build.props` é lido antes dos projetos e define versões, metadados e opções de compilação. `src/Directory.Build.targets` é lido depois e configura o empacotamento das bibliotecas, a chave compartilhada, SourceLink, licença e ícone. Os `.csproj` mantêm frameworks, dependências, recursos e descrições de cada componente. Demo e testes não são empacotados.
+
+O build das bibliotecas também gera os pacotes na versão `1.0.0-beta.1`. Para compilar sem empacotar, use `-p:GeneratePackageOnBuild=false`. Para escolher outra versão NuGet, informe `-p:PackageVersion=1.0.0-beta.2`; as versões de assembly e arquivo permanecem em `1.0.0`.
+
+A biblioteca referencia `OpenAC.Net.DFe.Core` **1.8.0-beta.8**. Para desenvolver com um projeto local do Core, informe explicitamente `-p:DFeCoreProject=/caminho/OpenAC.Net.DFe.Core.csproj`.
 
 `SchemaCoverageTests` percorre os XSDs compilados 3.10/4.00 e os contratos do assembly, conferindo campos, alternativas, enums, coleções, ordem e filtros por versão. Os testes também verificam documentos assinados, protocolos, serviços simulados e impressão. Essa validação utiliza schemas locais e não substitui a homologação junto à SEFAZ.
 

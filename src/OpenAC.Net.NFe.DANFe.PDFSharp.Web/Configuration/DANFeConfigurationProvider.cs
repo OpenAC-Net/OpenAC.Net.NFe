@@ -9,6 +9,6 @@ internal sealed class DANFeConfigurationProvider(Action<DANFeConfig> configurar)
         cancellationToken.ThrowIfCancellationRequested();
         var configuracao = new DANFeConfig();
         configurar(configuracao);
-        return ValueTask.FromResult(configuracao);
+        return new ValueTask<DANFeConfig>(configuracao);
     }
 }

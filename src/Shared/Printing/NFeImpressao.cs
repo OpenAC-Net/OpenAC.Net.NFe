@@ -30,8 +30,10 @@ internal static class NFeImpressao
             var attribute = member?.GetCustomAttribute<DFeEnumAttribute>();
             if (attribute != null) return attribute.Value;
         }
+
         return Convert.ToString(valor, CultureInfo.InvariantCulture) ?? "";
     }
+
     internal static string Dinheiro(decimal? valor) => (valor ?? 0).ToString("N2", Cultura);
     internal static string PrecoUnitario(decimal valor) => valor.ToString("0.00########", Cultura);
 
@@ -131,8 +133,8 @@ internal static class NFeImpressao
         NFeDetImpostoPIS pis => pis.TipoPIS,
         NFeDetImpostoCOFINS cofins => cofins.TipoCOFINS,
         _ => grupo?.GetType().GetProperties()
-        .Where(p => p.GetCustomAttribute<DFeElementAttribute>() != null)
-        .Select(p => p.GetValue(grupo)).FirstOrDefault(valor => valor != null)
+            .Where(p => p.GetCustomAttribute<DFeElementAttribute>() != null)
+            .Select(p => p.GetValue(grupo)).FirstOrDefault(valor => valor != null)
     };
 
     internal static string Valor(object grupo, string propriedade) =>

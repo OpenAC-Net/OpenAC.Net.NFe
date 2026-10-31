@@ -22,22 +22,25 @@ internal static class DemoCli
             Console.WriteLine("  escpos <nfce.xml> <saida.bin> [32|48]");
             Console.WriteLine("  escpos-preview <nfce.xml> <saida.png> [32|48]");
             Console.WriteLine("Execute sem argumentos para abrir a interface Avalonia.");
-            return args.Length == 1 && args[0] is "--help" or "-h" ? 0 : 1;
+            return args is ["--help" or "-h"] ? 0 : 1;
         }
+
         try
         {
             switch (args[0].ToLowerInvariant())
             {
                 case "danfe":
                     var pdf = new OpenDANFe();
-                    if (args.Length > 3) pdf.Configuracoes.LarguraNFCeMilimetros = int.Parse(args[3], CultureInfo.InvariantCulture);
+                    if (args.Length > 3)
+                        pdf.Configuracoes.LarguraNFCeMilimetros = int.Parse(args[3], CultureInfo.InvariantCulture);
                     pdf.GerarPDF(args[2], LoadNote(args[1]));
                     break;
                 case "evento":
                     File.WriteAllBytes(args[2], new OpenDANFe().GerarEventoPDF(LoadEvent(args[1])));
                     break;
                 case "inutilizacao":
-                    File.WriteAllBytes(args[2], new OpenDANFe().GerarInutilizacaoPDF(NFeProcInutilizacao.Load(args[1])));
+                    File.WriteAllBytes(args[2],
+                        new OpenDANFe().GerarInutilizacaoPDF(NFeProcInutilizacao.Load(args[1])));
                     break;
                 case "escpos":
                     var danfe = new OpenDANFeEscPos();
@@ -50,15 +53,18 @@ internal static class DemoCli
                         printer.Conectar();
                         danfe.Imprimir(note, printer);
                     }
+
                     break;
                 case "escpos-preview":
                     var preview = new OpenDANFeEscPos();
-                    if (args.Length > 3) preview.Configuracoes.Colunas = int.Parse(args[3], CultureInfo.InvariantCulture);
+                    if (args.Length > 3)
+                        preview.Configuracoes.Colunas = int.Parse(args[3], CultureInfo.InvariantCulture);
                     File.WriteAllBytes(args[2], preview.GerarPreview(LoadNote(args[1])));
                     break;
                 default:
                     throw new ArgumentException("Comando desconhecido: " + args[0]);
             }
+
             Console.WriteLine("Arquivo gerado: " + Path.GetFullPath(args[2]));
             return 0;
         }
@@ -78,7 +84,8 @@ internal static class DemoCli
         if (root.Name == ns + "procEventoNFe")
             return NFeProcEvento.ReadFromXml(root) ?? throw new ArgumentException("Evento processado inválido.");
         if (root.Name == ns + "evento")
-            return new NFeProcEvento { Evento = NFeEvento.ReadFromXml(root) };
+            return new NFeProcEvento
+                { Evento = NFeEvento.ReadFromXml(root) ?? throw new ArgumentException("Evento inválido.") };
         throw new ArgumentException("Esperado evento ou procEventoNFe no namespace oficial.");
     }
 }
