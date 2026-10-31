@@ -10,6 +10,10 @@ namespace OpenAC.Net.NFe.Storage;
 /// <summary>Gravação assíncrona com substituição atômica no mesmo diretório.</summary>
 public sealed class LocalDocumentStore : IDFeDocumentStore
 {
+    // File.Replace pode falhar no Windows quando duas instâncias substituem o destino ao mesmo tempo.
+    // Somente a publicação é serializada; os arquivos temporários são escritos em paralelo.
+    private static readonly object PublicationLock = new();
+
     public async Task SaveAsync(IDFeDocument document, CancellationToken cancellationToken = default)
     {
         if (document == null) throw new ArgumentNullException(nameof(document));
@@ -35,17 +39,20 @@ public sealed class LocalDocumentStore : IDFeDocumentStore
                        true))
                 await stream.WriteAsync(bytes, 0, bytes.Length, cancellationToken).ConfigureAwait(false);
 
-            cancellationToken.ThrowIfCancellationRequested();
-            if (File.Exists(path)) File.Replace(temporary, path, null);
-            else
+            lock (PublicationLock)
             {
-                try
+                cancellationToken.ThrowIfCancellationRequested();
+                if (File.Exists(path)) File.Replace(temporary, path, null);
+                else
                 {
-                    File.Move(temporary, path);
-                }
-                catch (IOException) when (File.Exists(path))
-                {
-                    File.Replace(temporary, path, null);
+                    try
+                    {
+                        File.Move(temporary, path);
+                    }
+                    catch (IOException) when (File.Exists(path))
+                    {
+                        File.Replace(temporary, path, null);
+                    }
                 }
             }
         }

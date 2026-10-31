@@ -294,17 +294,28 @@ public sealed class WebIntegrationTests
     }
 
     [Test]
-    public async Task AtomicDocumentStoreKeepsCompleteDocumentsUnderConcurrentReplacement()
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task AtomicDocumentStoreKeepsCompleteDocumentsUnderConcurrentReplacement(bool existingFile)
     {
         var directory = Path.Combine(Path.GetTempPath(), "nfe-store-" + Guid.NewGuid().ToString("N"));
         var path = Path.Combine(directory, "documento.xml");
         try
         {
-            var store = new LocalDocumentStore();
             var values = Enumerable.Range(0, 12).Select(index => $"<doc>{new string((char)('a' + index), 8192)}</doc>").ToArray();
-            await Task.WhenAll(values.Select(value => store.SaveAsync(new DFeDocument(path, value, DFeArquivoExiste.Sobrescrever))));
-            await Assert.That(values).Contains(await File.ReadAllTextAsync(path));
-            await Assert.That(Directory.GetFiles(directory).Length).IsEqualTo(1);
+            if (existingFile)
+            {
+                Directory.CreateDirectory(directory);
+                await File.WriteAllTextAsync(path, "<original/>");
+            }
+
+            for (var round = 0; round < 10; round++)
+            {
+                await Task.WhenAll(values.Select(value => new LocalDocumentStore().SaveAsync(
+                    new DFeDocument(path, value, DFeArquivoExiste.Sobrescrever))));
+                await Assert.That(values).Contains(await File.ReadAllTextAsync(path));
+                await Assert.That(Directory.GetFiles(directory).Length).IsEqualTo(1);
+            }
         }
         finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
     }
